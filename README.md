@@ -1,4 +1,10 @@
 # Wallpaper Engine New Tab WE壁纸标签页
+声明:本扩展全程由AI许愿完成，本质上是给自己用的乐呵的，如果遇到问题建议直接拿压缩包去问deepseek harness
+本扩展强依赖外部插件webwallgl和media-bridge
+作者B站主页:【在下练习两年半的坤的个人空间-哔哩哔哩】 https://b23.tv/1AaM2Iq
+作者github主页: https://github.com/oneincase
+webwallgl: https://github.com/oneincase/webwallgl
+media-bridge: https://github.com/oneincase/media-bridge
 
 ![新标签页](docs/img/hero.png)
 
@@ -12,8 +18,8 @@
 
 ![设置面板](docs/img/settings.png)
 
-## 装上试试
-
+## 安装
+前置条件:前往webwallgl作者github下下载media-bridge并放入program files，使用npm命令安装并启用webwallgl
 1. `edge://extensions`（或 `chrome://extensions`）→ 打开「开发人员模式」
 2. 「加载解压缩的扩展」→ 选这个仓库里的 `we-newtab` 目录
 3. 新标签页右下角齿轮 →「添加目录…」→ 选壁纸目录
@@ -92,6 +98,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 它会写 `HKCU\Software\Microsoft\DirectX\UserGpuPreferences`，卸载跑 `uninstall.ps1`。
+本质是修改注册表从而达到切换gpu，不喜勿开。
 
 ## 代码结构
 
