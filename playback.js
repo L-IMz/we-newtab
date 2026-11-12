@@ -73,7 +73,10 @@ async function prepareProps(wall) {
   const section = $("propsSection");
   const box = $("props");
   propView = null;
+  // 重装前可能还有未保存的改动（例如刚点的视差开关），内存值优先，避免界面回跳
+  const pending = state.propWallId === wall.id ? state.propValues || {} : {};
   propWallId = wall.id;
+  state.propWallId = wall.id;
   state.propValues = {};
 
   if (!defs.length) {
@@ -84,7 +87,7 @@ async function prepareProps(wall) {
 
   const defaults = defaultValues(defs);
   const saved = (await readAllProps())[wall.id] || {};
-  const values = { ...defaults, ...saved };
+  const values = { ...defaults, ...saved, ...pending };
 
   // 壁纸若定义了名为「视差」的布尔属性，加载时用它的值作为扩展开关初值
   const parallaxDef = defs.find((entry) => entry.def.type === "bool" && /视差/.test(entry.def.text || ""));
@@ -104,6 +107,8 @@ async function prepareProps(wall) {
     scheduleWallPropsSave(propWallId, values);
     if (state.parallaxDirty) {
       state.parallaxDirty = false;
+      // 先把最新值写完再重装，否则装配读到的还是旧值，开关会弹回去
+      await saveWallProps(propWallId, values);
       remountScene();
     }
   });
@@ -114,6 +119,7 @@ async function prepareProps(wall) {
     const all = await readAllProps();
     delete all[propWallId];
     await chrome.storage.local.set({ wallProps: all });
+    state.propValues = {};
     await prepareProps(wall);
     pushProps(state.propValues);
     notice("已恢复该壁纸的默认选项");
