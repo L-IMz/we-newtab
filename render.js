@@ -148,6 +148,7 @@ function applyProps(values) {
     // setProperties 只转发给脚本，属性条件驱动的图层不会跟着变。
     if (typeof instance.declareUserProperties === "function") instance.declareUserProperties(values);
     else instance.setProperties(values);
+    applySoundVisibility();
   } catch (error) {
     send({ t: "diag", level: "warn", msg: `属性下发失败：${errorText(error)}` });
   }
@@ -262,6 +263,60 @@ function loadEngine() {
   return engineLoading;
 }
 
+// 宽松比较：数字按数值比，其余按字符串比（与 WE 的属性条件一致）
+function matchesUserValue(value, condition) {
+  const num = Number(value);
+  const condNum = Number(condition);
+  if (Number.isFinite(num) && Number.isFinite(condNum)) return num === condNum;
+  return String(value) === String(condition);
+}
+
+let soundRulesPresent = false;
+
+// 声音图层：引擎只按 startsilent 自动播放，不认 volume 脚本里的 play 绑定。
+// 这里按壁纸自己写的 scriptproperties.play（常见写法：bgm=1 播这首、bgm=2 播那首）对齐播放状态。
+function applySoundVisibility() {
+  const scene = window.__scene;
+  const ctlProps = instance && typeof instance.getProperties === "function" ? instance.getProperties() : {};
+  if (!scene || !Array.isArray(scene.layers)) return;
+  for (const layer of scene.layers) {
+    const spec = layer && layer.srcObject && layer.srcObject.volume && layer.srcObject.volume.scriptproperties;
+    if (!spec || !spec.play) continue;
+    // 规则存在就标记，即使此刻 soundCtl 还没创建，后续 tick 会继续对齐
+    soundRulesPresent = true;
+    const ctl = layer.soundCtl;
+    if (!ctl) continue;
+    const rule = spec.play;
+    const user = rule.user;
+    let want = rule.value !== false;
+    if (user && typeof user === "object" && typeof user.name === "string") {
+      const current = ctlProps[user.name];
+      want = user.condition === undefined ? !!current : matchesUserValue(current, user.condition);
+    }
+    const playing = typeof ctl.isPlaying === "function" ? ctl.isPlaying() : false;
+
+    // 引擎在音频上下文恢复/重播时会再次调用 play()，这里加一层开关：
+    // 不该播的声音即使引擎来 play 也不生效，同时把音量压到 0 兜底。
+    layer.__weWantSound = want;
+    if (!layer.__weSoundGuard && ctl.play && ctl.stop) {
+      const rawPlay = ctl.play.bind(ctl);
+      const rawStop = ctl.stop.bind(ctl);
+      ctl.play = () => {
+        if (layer.__weWantSound) rawPlay();
+      };
+      ctl.stop = () => rawStop();
+      layer.__weSoundGuard = true;
+    }
+    if (want) {
+      if (typeof ctl.setVolume === "function") ctl.setVolume(1);
+      if (!playing) ctl.play && ctl.play();
+    } else {
+      if (typeof ctl.setVolume === "function") ctl.setVolume(0);
+      if (playing) ctl.stop && ctl.stop();
+    }
+  }
+}
+
 // 创建引擎实例并加载壁纸
 async function mountScene(msg) {
   parallaxEnabled = msg.opts?.parallax !== false;
@@ -314,6 +369,8 @@ async function mountScene(msg) {
   try {
     await instance.load(buildSource(msg));
     applyCameraParallax();
+    applySoundVisibility();
+    setTimeout(applySoundVisibility, 800);
     // load() 之后再推一次：部分壁纸在装配期不消费 properties，只有热更才生效
     if (msg.props && Object.keys(msg.props).length) {
       try {
@@ -392,6 +449,28 @@ window.addEventListener("message", (event) => {
   if (data.t === "props" && data.props) applyProps(data.props);
 });
 
+// 交互/重新可见后，引擎会恢复音频上下文并重播声音图层。
+// 在这之后的 2 秒里每 100ms 对齐一次，避免几首同时响。
+let soundBurstTimer = 0;
+
+function syncSoundBurst() {
+  if (!soundRulesPresent) return;
+  clearInterval(soundBurstTimer);
+  let ticks = 0;
+  applySoundVisibility();
+  soundBurstTimer = setInterval(() => {
+    applySoundVisibility();
+    if (++ticks >= 20) clearInterval(soundBurstTimer);
+  }, 100);
+}
+
+for (const evt of ["pointerdown", "keydown"]) {
+  window.addEventListener(evt, syncSoundBurst, { passive: true });
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) syncSoundBurst();
+});
+
 // 标签页不可见时暂停渲染，回来再继续（后台不再空转 GPU）
 document.addEventListener("visibilitychange", () => {
   if (!instance) return;
@@ -405,6 +484,7 @@ document.addEventListener("visibilitychange", () => {
 
 setInterval(() => {
   if (!instance) return;
+  if (soundRulesPresent) applySoundVisibility();
   const stats = instance.stats;
   if (stats) send({ t: "stats", fps: Math.round(stats.fps || 0), running: !!stats.running });
 }, 1000);
