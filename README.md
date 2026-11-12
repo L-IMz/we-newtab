@@ -155,4 +155,4 @@ we-newtab/
 
 ## 许可
 
-代码 MIT。场景渲染依赖 [WebWallGL](https://github.com/)（MIT），`vendor/` 里的文件原样分发。
+代码 MIT。场景渲染依赖 WebWallGL（MIT，作者 oneincase），`vendor/` 里的文件原样分发。

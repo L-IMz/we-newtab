@@ -24,7 +24,7 @@ SOFTWARE.
 
 Third-party notices
 
-WebWallGL (vendor/webwallgl.global.min.js)
+WebWallGL (vendor/webwallgl.global.min.js)\n  Copyright (c) 2026 oneincase <462534624@qq.com>
   Wallpaper Engine scene renderer, distributed under the MIT License.
   Files are redistributed unmodified; see the upstream project for details.
 
