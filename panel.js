@@ -86,7 +86,13 @@ function renderRoots() {
   });
 }
 
-// 绑定所有设置项
+// 这些设置要按数字存，其余保持字符串/布尔
+const NUMERIC_SETTINGS = new Set([
+  "fps", "dpr", "brightness", "volume", "rotateEvery", "bridgePort",
+  "hitokotoSize", "clockSize", "clockWeight", "clockX", "clockY",
+]);
+
+// 绑定所有设置项：回填当前值、监听变化、按类型分发副作用
 function bindSettings() {
   applyClock();
 
@@ -106,8 +112,7 @@ function bindSettings() {
     else el.value = String(state.settings[key]);
     el.addEventListener(el.type === "range" || el.type === "checkbox" ? "input" : "change", async () => {
       state.settings[key] = el.type === "checkbox" ? el.checked : el.value;
-      if (key === "fps" || key === "dpr" || key === "brightness" || key === "volume" || key === "rotateEvery" || key === "bridgePort" || key === "hitokotoSize" || key === "clockSize" || key === "clockWeight" || key === "clockX" || key === "clockY")
-        state.settings[key] = Number(state.settings[key]) || 0;
+      if (NUMERIC_SETTINGS.has(key)) state.settings[key] = Number(state.settings[key]) || 0;
       if (key === "rate") {
         state.settings.rate = Number(state.settings.rate) || 1;
         vid.playbackRate = state.settings.rate;

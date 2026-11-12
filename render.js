@@ -75,7 +75,8 @@
 const stage = document.getElementById("stage");
 
 const send = (msg, transfer) => parent.postMessage(msg, "*", transfer || []);
-const engine = window.WebWallGL;
+let engine = window.WebWallGL;
+let engineLoading = null;
 
 
 
@@ -241,12 +242,36 @@ function applyCameraParallax() {
 
   if (patched) send({ t: "diag", level: "info", msg: `camera parallax：为 ${patched} 个图层补充默认视差深度` });
 }
+// 按需加载引擎（1MB），避免每个新标签页都提前解析
+function loadEngine() {
+  if (engine) return Promise.resolve(engine);
+  if (engineLoading) return engineLoading;
+  engineLoading = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "vendor/webwallgl.global.min.js";
+    script.onload = () => {
+      engine = window.WebWallGL;
+      resolve(engine);
+    };
+    script.onerror = () => {
+      engineLoading = null;
+      reject(new Error("WebWallGL 脚本加载失败"));
+    };
+    document.head.appendChild(script);
+  });
+  return engineLoading;
+}
+
 // 创建引擎实例并加载壁纸
 async function mountScene(msg) {
   parallaxEnabled = msg.opts?.parallax !== false;
   if (!engine) {
-    send({ t: "error", msg: "WebWallGL 未加载" });
-    return;
+    try {
+      await loadEngine();
+    } catch (error) {
+      send({ t: "error", msg: errorText(error) });
+      return;
+    }
   }
 
   destroy();

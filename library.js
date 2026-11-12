@@ -173,8 +173,9 @@ async function rescan() {
     flushProjectCache();
 
     state.walls = found
-      .map((w, index) => ({
-        id: `${w.root}/${w.name}/${index}`,
+      .map((w) => ({
+        // 用 根目录/壁纸目录名 做稳定 id；扫描顺序（并发）变了也不会变
+        id: `${w.root}/${w.name}`,
         title: w.project.title || w.name,
         type: inferType(w.project),
         dir: w.dir,
@@ -328,31 +329,32 @@ async function renderWalls() {
   }
 }
 
-// 可视高度按 5 整行算，避免底部切半行；面板隐藏时量不到高度，打开面板后再补一次
+// 由单行卡片高度换算滚动区可视高度：5 整行 + 行间隙 + 内边距/滚动条余量
+function wallListMax(cardHeight) {
+  const gap = 8;
+  const rows = 5;
+  return Math.round(rows * cardHeight + (rows - 1) * gap + 20);
+}
+
+// 单个列表对齐：面板隐藏时量不到高度，打开面板后再补一次
 function alignWallHeight(list) {
   const card = list.querySelector(".card");
   if (!card) return;
   const height = card.getBoundingClientRect().height;
   if (height < 20) return;
-  const gap = 8;
-  const rows = 5;
-  // +20：内边距 12 + 滚动条出现后卡片略变矮的余量
-  list.style.setProperty("--wall-max", `${Math.round(rows * height + (rows - 1) * gap + 20)}px`);
+  list.style.setProperty("--wall-max", `${wallListMax(height)}px`);
 }
 
-// 先读后写，批量对齐所有滚动区高度
+// 批量对齐：先读所有高度，再统一写样式，避免读写交替触发重排
 function alignAllWallLists() {
   const lists = [...document.querySelectorAll(".wallList.scrollable")];
   const heights = lists.map((list) => {
     const card = list.querySelector(".card");
     return card ? card.getBoundingClientRect().height : 0;
   });
-  const gap = 8;
-  const rows = 5;
   lists.forEach((list, index) => {
-    const height = heights[index];
-    if (height < 20) return;
-    list.style.setProperty("--wall-max", `${Math.round(rows * height + (rows - 1) * gap + 20)}px`);
+    if (heights[index] < 20) return;
+    list.style.setProperty("--wall-max", `${wallListMax(heights[index])}px`);
   });
 }
 /* ---------------- 目录监听 ---------------- */

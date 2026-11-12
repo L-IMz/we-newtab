@@ -192,7 +192,8 @@
       <label>桥接端口<input id="bridgePort" type="number" min="1024" max="65535" step="1" value="8765"></label>
       <div class="row"><button id="bridgeStart">启动 media-bridge</button></div>
       <label class="check"><input type="checkbox" id="bridgeAuto"> 开机自动启动</label>
-      <p class="hint" id="bridgeState">需要本机运行 media-bridge。可以点上面的按钮一键启动，或手动执行：<code>&amp; "$env:USERPROFILE\Downloads\media-bridge-win32-x64.exe" serve --http</code>。用文件名直接调用会提示「无法识别为 cmdlet」，要带完整路径。</p>
+      <p class="hint" id="bridgeState">服务状态未知</p>
+      <p class="hint">默认在 <code>C:\Program Files\media-bridge-win32-x64.exe</code> 找，找不到再退回 Downloads / 桌面；也可以手动执行 <code>&amp; "C:\Program Files\media-bridge-win32-x64.exe" serve --http</code>。</p>
       <label class="check"><input type="checkbox" id="rotate"> 自动轮换壁纸</label>
       <label>轮换间隔
         <select id="rotateEvery">

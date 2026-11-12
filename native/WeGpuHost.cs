@@ -74,12 +74,16 @@ internal static class Program
 
     // ---------- media-bridge 服务 ----------
 
+    // 默认去 Program Files 找（安装版通常在这里），找不到再退回用户目录
     private static readonly string[] BridgeCandidates =
     {
+        @"%ProgramFiles%\media-bridge-win32-x64.exe",
+        @"%ProgramFiles%\media-bridge\media-bridge-win32-x64.exe",
+        @"%ProgramW6432%\media-bridge-win32-x64.exe",
+        @"%ProgramW6432%\media-bridge\media-bridge-win32-x64.exe",
+        @"%LOCALAPPDATA%\media-bridge\media-bridge-win32-x64.exe",
         @"%USERPROFILE%\Downloads\media-bridge-win32-x64.exe",
         @"%USERPROFILE%\Desktop\media-bridge-win32-x64.exe",
-        @"%LOCALAPPDATA%\media-bridge\media-bridge-win32-x64.exe",
-        @"%ProgramFiles%\media-bridge\media-bridge-win32-x64.exe",
     };
 
     private static string FindBridge(string preferred)
