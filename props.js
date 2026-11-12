@@ -3,6 +3,8 @@
 /* 壁纸自定义选项：解析 project.json 的 general.properties，生成控件并求值 condition。
    只处理文本与数值，不执行壁纸提供的任何 HTML/脚本。 */
 
+/* ---------------- 属性类型与文本 ---------------- */
+
 const PROP_TYPES = new Set(["slider", "color", "bool", "combo", "textinput", "text", "group", "file"]);
 
 // 把 WE 的富文本标记压成纯文本
@@ -38,7 +40,7 @@ function labelOf(def) {
   return text;
 }
 
-/* --- condition 表达式：支持 && || == != 括号、数字/字符串/布尔、`Name.value` --- */
+/* ---------------- condition 求值 ---------------- */
 
 // 宽松比较（数字或字符串）
 function compare(a, b, op) {
@@ -146,7 +148,7 @@ function evalCondition(expression, values) {
   }
 }
 
-/* --- 取值与控件 --- */
+/* ---------------- 属性定义解析 ---------------- */
 
 // 从 project.json 提取可渲染的属性定义
 function propDefs(wall) {
@@ -156,6 +158,8 @@ function propDefs(wall) {
     .map(([name, def]) => ({ name, def }))
     .sort((a, b) => Number(a.def.order ?? 0) - Number(b.def.order ?? 0));
 }
+
+/* ---------------- 取值与格式化 ---------------- */
 
 // 按定义生成默认值
 function defaultValues(defs) {
@@ -202,11 +206,15 @@ function formatPropValue(def, raw) {
   return def.fraction ? n.toFixed(Math.min(4, Math.max(0, precision))) : String(Math.round(n));
 }
 
+/* ---------------- 控件生成 ---------------- */
+
 const el = (tag, className) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
 };
+
+/* ---------------- 视图渲染 ---------------- */
 
 /* 渲染控件列表。onChange(name, value) 由调用方负责持久化与下发 */
 function renderProperties(container, defs, values, onChange) {

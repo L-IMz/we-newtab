@@ -1,7 +1,7 @@
 "use strict";
 
-/* 设置面板：开关动画、底部提示、目录列表与所有设置项绑定。
-   原生能力（显卡/桥服务）在 native.js，时钟在 clock.js。 */
+/* 设置面板：面板开合与状态提示、目录列表、所有设置项的绑定与副作用分发、
+   性能自适应与空闲任务。原生能力在 native.js，时钟在 clock.js。 */
 
 /* ---------------- 面板开关 ---------------- */
 
@@ -20,7 +20,7 @@ function setPanelOpen(open) {
   });
 }
 
-/* ---------------- UI ---------------- */
+/* ---------------- 状态提示 ---------------- */
 
 let statusTimer = 0;
 // 底部只在切换壁纸时露一下名字，其它过程信息一律只进控制台
@@ -41,6 +41,8 @@ function notice(text) {
 function reportError(error) {
   console.error("[error]", error?.message || error);
 }
+
+/* ---------------- 目录列表 ---------------- */
 
 // 渲染已授权目录列表
 function renderRoots() {
@@ -86,7 +88,10 @@ function renderRoots() {
   });
 }
 
+/* ---------------- 设置项绑定 ---------------- */
+
 // 这些设置要按数字存，其余保持字符串/布尔
+
 const NUMERIC_SETTINGS = new Set([
   "fps", "dpr", "brightness", "volume", "rotateEvery", "bridgePort",
   "hitokotoSize", "clockSize", "clockWeight", "clockX", "clockY",
@@ -146,12 +151,16 @@ function bindSettings() {
 
 }
 
+/* ---------------- 填充与实时设置 ---------------- */
+
 // 应用填充模式
 function applyFit() {
   const map = { cover: "cover", contain: "contain", stretch: "fill" };
   vid.style.objectFit = map[state.settings.fit] || "cover";
   img.style.objectFit = map[state.settings.fit] || "cover";
 }
+
+/* ---------------- 性能自适应 ---------------- */
 
 const DPR_LADDER = [2, 1.5, 1, 0.75, 0.5];
 let lowFpsTicks = 0;
@@ -198,6 +207,8 @@ function applyLiveSettings() {
   );
 }
 
+/* ---------------- 面板事件 ---------------- */
+
 // 绑定面板上的所有按钮
 function bindPanel() {
   $("gear").addEventListener("click", () => setPanelOpen());
@@ -214,7 +225,6 @@ function bindPanel() {
   $("hitokotoClear").addEventListener("click", () => clearHitokotoFont().catch(reportError));
   $("hitokotoNext").addEventListener("click", () => renderHitokoto(true));
   bindGpu();
-
 
   $("addRoot").addEventListener("click", async () => {
     try {
@@ -255,6 +265,7 @@ function bindPanel() {
   });
 }
 
+/* ---------------- 空闲任务 ---------------- */
 
 let idleTimer = 0;
 // 鼠标静止后隐藏界面元素

@@ -1,6 +1,8 @@
 "use strict";
 
-/* 导入字体：每个组件一个槽位，字体字节存在 IndexedDB，运行时用 FontFace 注册 */
+/* 字体槽位：每个组件一个槽位，导入的字体以字节存在 IndexedDB，运行时用 FontFace 注册。 */
+
+/* ---------------- 槽位配置 ---------------- */
 
 const FONT_SLOTS = {
   clock: { key: "font.clock", family: "WE-Clock" },
@@ -13,6 +15,7 @@ function fontSlot(name) {
 }
 
 // 从 IndexedDB 恢复字体
+/* ---------------- 加载已存字体 ---------------- */
 async function loadStoredFont(name) {
   const slot = fontSlot(name);
   try {
@@ -29,6 +32,7 @@ async function loadStoredFont(name) {
 }
 
 // 导入并注册字体
+/* ---------------- 导入与清除 ---------------- */
 async function importFont(name, file) {
   const slot = fontSlot(name);
   const buffer = await file.arrayBuffer();

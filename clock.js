@@ -1,6 +1,6 @@
 "use strict";
 
-/* 中间时钟：时间/日期渲染与外观设置（显隐、字号、粗细、字体、百分比位置） */
+/* 时钟：时间 / 日期渲染与外观设置（显隐、字号、粗细、字体、百分比位置）。 */
 
 const CLOCK_FONTS = {
   system: '"Segoe UI Variable Display", "Segoe UI Variable", var(--font)',

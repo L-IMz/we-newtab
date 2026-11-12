@@ -3,8 +3,6 @@
 /* 原生能力层：显卡偏好（浏览器不提供 API）与 media-bridge 服务管理。
    所有操作都走本地原生消息宿主 com.we.newtab.gpu，失败时静默降级。 */
 
-/* ---------------- 原生消息通道 ---------------- */
-
 /* ---------------- 浏览器与显卡 ---------------- */
 
 const GPU_HOST = "com.we.newtab.gpu";
@@ -27,6 +25,8 @@ function rendererName() {
     return (rendererCache = "未知");
   }
 }
+
+/* ---------------- 原生消息通道 ---------------- */
 
 // 与本地宿主通信：浏览器不提供修改显卡偏好的 API，只能走原生消息
 function nativeRequest(message) {

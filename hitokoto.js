@@ -1,6 +1,6 @@
 "use strict";
 
-/* 一言：左下角一句随机句子，支持字号、字体与导入自定义字体 */
+/* 一言：左下角随机句子，支持字号、字体、导入自定义字体，带本地缓存。 */
 
 const HITOKOTO_API = "https://v1.hitokoto.cn/";
 const HITOKOTO_TTL = 10 * 60 * 1000;

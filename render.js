@@ -1,6 +1,8 @@
 "use strict";
 
-/* 沙箱页：只负责把 WebWallGL 挂到 canvas 上。与外壳仅靠 postMessage 通信。 */
+/* 沙箱渲染页：按需加载 WebWallGL，处理外壳消息（挂载 / 属性 / 音量 / 视差），
+   回传 ready / stats / diag / error，提供音频频谱快照，并按壁纸规则同步声音图层开关。
+   与外壳只通过 postMessage 通信。 */
 
 /* 沙箱页是不透明源：读取 localStorage / sessionStorage 会抛 SecurityError，
    连 `typeof` 探测都会炸。属性本身可配置，直接遮蔽成内存实现。 */
@@ -72,15 +74,19 @@
   }
 })();
 
+/* ---------------- DOM 与消息工具 ---------------- */
+
 const stage = document.getElementById("stage");
 
 const send = (msg, transfer) => parent.postMessage(msg, "*", transfer || []);
-let engine = window.WebWallGL;
-let engineLoading = null;
 
+// 统一的错误文本
+function errorText(error) {
+  return `${error?.name || "Error"}: ${error?.message || error}`;
+}
 
+/* ---------------- 音频频谱 ---------------- */
 
-let instance = null;
 // 宿主推来的实时频谱；为空时引擎用自己的模拟源
 let audioBins = null;
 
@@ -109,6 +115,8 @@ function audioSnapshot() {
   }
   return { left: audioSmoothL, right: audioSmoothR };
 }
+/* ---------------- 媒体快照 ---------------- */
+
 let mediaSnap = null;
 // 引擎判断媒体源读的是 snapshot 属性本身（snapshot.hasMedia），所以用 getter 暴露最新快照
 const mediaSource = {
@@ -185,7 +193,10 @@ function buildSource(msg) {
 
 // WE 的相机视差由「全局相机」驱动，而本引擎把偏移乘到每个图层的 parallaxDepth 上。
 // 有些壁纸只开了 cameraparallax、图层没有 parallaxDepth，就会一点位移都没有。
+/* ---------------- 视差 ---------------- */
+
 // 这里按「扩展开关 + 壁纸自己的视差属性 + 场景 cameraparallax」三者共同决定是否注入深度。
+
 const PARALLAX_FALLBACK_DEPTH = 1;
 const parallaxOriginal = new WeakMap();
 let parallaxEnabled = true;
@@ -243,6 +254,11 @@ function applyCameraParallax() {
 
   if (patched) send({ t: "diag", level: "info", msg: `camera parallax：为 ${patched} 个图层补充默认视差深度` });
 }
+/* ---------------- 引擎按需加载 ---------------- */
+
+let engine = window.WebWallGL;
+let engineLoading = null;
+
 // 按需加载引擎（1MB），避免每个新标签页都提前解析
 function loadEngine() {
   if (engine) return Promise.resolve(engine);
@@ -262,6 +278,8 @@ function loadEngine() {
   });
   return engineLoading;
 }
+
+/* ---------------- 声音图层开关同步 ---------------- */
 
 // 宽松比较：数字按数值比，其余按字符串比（与 WE 的属性条件一致）
 function matchesUserValue(value, condition) {
@@ -316,6 +334,10 @@ function applySoundVisibility() {
     }
   }
 }
+
+/* ---------------- 挂载 / 属性 / 销毁 ---------------- */
+
+let instance = null;
 
 // 创建引擎实例并加载壁纸
 async function mountScene(msg) {
@@ -385,17 +407,13 @@ async function mountScene(msg) {
   }
 }
 
-// 统一的错误文本
-function errorText(error) {
-  return `${error?.name || "Error"}: ${error?.message || error}`;
-}
+/* ---------------- 与外壳通信 ---------------- */
 
 window.addEventListener("message", (event) => {
   const data = event.data;
   // 网页壁纸内部的运行期异常通常只影响某个特效模块，不该判成整张壁纸加载失败
   if (data && data.__weerr) send({ t: "diag", level: "warn", msg: `网页壁纸脚本异常：${data.__weerr}` });
   if (!data || !data.t) return;
-
 
   if (data.t === "read:res") {
     const resolve = pending.get(data.id);
@@ -440,24 +458,26 @@ window.addEventListener("message", (event) => {
     else if (Array.isArray(data.left) && Array.isArray(data.right)) audioBins = { left: data.left, right: data.right };
   }
 
-
   if (data.t === "stop") destroy();
 
   if (data.t === "ping") send({ t: "pong" });
 
-
   if (data.t === "props" && data.props) applyProps(data.props);
 });
 
-// 交互/重新可见后，引擎会恢复音频上下文并重播声音图层。
-// 在这之后的 2 秒里每 100ms 对齐一次，避免几首同时响。
+/* ---------------- 交互后声音对齐 ---------------- */
+
 let soundBurstTimer = 0;
 
+// 交互/重新可见后，引擎会恢复音频上下文并重播声音图层。
+// 在这之后的 2 秒里每 100ms 对齐一次，避免几首同时响。
 function syncSoundBurst() {
   if (!soundRulesPresent) return;
   clearInterval(soundBurstTimer);
   let ticks = 0;
   applySoundVisibility();
+/* ---------------- 统计与可见性 ---------------- */
+
   soundBurstTimer = setInterval(() => {
     applySoundVisibility();
     if (++ticks >= 20) clearInterval(soundBurstTimer);

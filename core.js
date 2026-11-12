@@ -1,6 +1,7 @@
 "use strict";
 
-/* 基础层：DOM 引用、默认设置与运行状态、IndexedDB、设置读写、目录授权。 */
+/* 基础层：DOM 引用、默认设置与运行状态、IndexedDB / chrome.storage 封装、目录授权与文件读取。
+   所有模块都直接依赖这里的 $()、state、loadSettings/saveSettings、kvGet/kvSet。 */
 
 /* ---------------- DOM 引用 ---------------- */
 
