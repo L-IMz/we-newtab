@@ -19,6 +19,7 @@ media-bridge: https://github.com/oneincase/media-bridge
 ![设置面板](docs/img/settings.png)
 
 ## 安装
+
 前置条件:前往webwallgl作者github下下载media-bridge并放入program files，使用npm命令安装并启用webwallgl
 1. `edge://extensions`（或 `chrome://extensions`）→ 打开「开发人员模式」
 2. 「加载解压缩的扩展」→ 选这个仓库里的 `we-newtab` 目录
@@ -72,8 +73,7 @@ Steam 创意工坊的壁纸通常在：
 | 314MB | ~1.6s（解析占 1.1s） |
 | 视频 10.8MB | ~81ms |
 
-时间基本都花在解析、贴图上传和着色器编译上。想压到 250ms 以内，只有很小的场景能做到——
-试过关后处理、预热 WebGL、保留解析缓存，收益要么没有要么不明显，所以别信"秒开 3A 场景"这种话。
+时间基本都花在解析、贴图上传和着色器编译上。
 
 ## 系统音频（可选）
 
