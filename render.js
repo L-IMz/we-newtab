@@ -105,6 +105,18 @@ function destroy() {
   stage.textContent = "";
 }
 
+function applyProps(values) {
+  if (!instance || !values) return;
+  try {
+    // declareUserProperties 会更新 liveUserProps、图层绑定与可见性，并通知脚本；
+    // setProperties 只转发给脚本，属性条件驱动的图层不会跟着变。
+    if (typeof instance.declareUserProperties === "function") instance.declareUserProperties(values);
+    else instance.setProperties(values);
+  } catch (error) {
+    send({ t: "diag", level: "warn", msg: `属性下发失败：${errorText(error)}` });
+  }
+}
+
 function buildSource(msg) {
   return {
     key: msg.key,
@@ -135,29 +147,63 @@ function buildSource(msg) {
 
 // WE 的相机视差由「全局相机」驱动，而本引擎把偏移乘到每个图层的 parallaxDepth 上。
 // 有些壁纸只开了 cameraparallax、图层没有 parallaxDepth，就会一点位移都没有。
-// 这里给缺少深度的普通图层补一个默认值，让相机视差真正可见。
+// 这里按「扩展开关 + 壁纸自己的视差属性 + 场景 cameraparallax」三者共同决定是否注入深度。
 const PARALLAX_FALLBACK_DEPTH = 1;
+const parallaxOriginal = new WeakMap();
+let parallaxEnabled = true;
+
+function sceneWantsParallax() {
+  const raw = window.__scene?.general?.cameraparallax;
+  return raw === true || (raw && typeof raw === "object" && raw.value === true);
+}
+
+// 引擎在装配时会把 parallaxDepth 快照到 parallaxDepthOwn，运行时两个都要改
+function setLayerDepth(layer, depth) {
+  if (!parallaxOriginal.has(layer)) {
+    parallaxOriginal.set(layer, {
+      depth: layer.parallaxDepth || null,
+      own: layer.parallaxDepthOwn || null,
+    });
+  }
+  layer.parallaxDepth = depth;
+  if ("parallaxDepthOwn" in layer) layer.parallaxDepthOwn = depth;
+}
+
+function restoreLayerDepth(layer) {
+  if (!parallaxOriginal.has(layer)) return;
+  const original = parallaxOriginal.get(layer);
+  for (const [key, value] of [["parallaxDepth", original.depth], ["parallaxDepthOwn", original.own]]) {
+    if (!(key in layer)) continue;
+    if (value) layer[key] = value;
+    else delete layer[key];
+  }
+  parallaxOriginal.delete(layer);
+}
 
 function applyCameraParallax() {
   const scene = window.__scene;
-  const general = scene?.general;
-  if (!general || !Array.isArray(scene.layers)) return;
+  if (!scene || !Array.isArray(scene.layers)) return;
 
-  const raw = general.cameraparallax;
-  const enabled = raw === true || (raw && typeof raw === "object" && raw.value === true);
-  if (!enabled) return;
-
+  const on = parallaxEnabled && sceneWantsParallax();
   let patched = 0;
+
   for (const layer of scene.layers) {
     if (!layer || layer.destroyed) continue;
-    if (layer.parallaxDepth) continue; // 作者已定义，尊重原值
     if (layer.isSkybox || layer.skybox) continue; // 天空盒不跟随
-    layer.parallaxDepth = [PARALLAX_FALLBACK_DEPTH, PARALLAX_FALLBACK_DEPTH];
+    if (!on) {
+      setLayerDepth(layer, [0, 0]); // 关掉：作者定义的深度也归零
+      continue;
+    }
+    restoreLayerDepth(layer);
+    if (layer.parallaxDepth) continue; // 作者已定义，尊重原值
+    setLayerDepth(layer, [PARALLAX_FALLBACK_DEPTH, PARALLAX_FALLBACK_DEPTH]);
     patched++;
   }
+
   if (patched) send({ t: "diag", level: "info", msg: `camera parallax：为 ${patched} 个图层补充默认视差深度` });
 }
 async function mountScene(msg) {
+  parallaxEnabled = msg.opts?.parallax !== false;
   if (!engine) {
     send({ t: "error", msg: "WebWallGL 未加载" });
     return;
@@ -205,7 +251,7 @@ async function mountScene(msg) {
     // load() 之后再推一次：部分壁纸在装配期不消费 properties，只有热更才生效
     if (msg.props && Object.keys(msg.props).length) {
       try {
-        instance.setProperties(msg.props);
+        applyProps(msg.props);
         send({ t: "propsstate", values: instance.getProperties() });
       } catch (e) {
         send({ t: "diag", level: "warn", msg: `选项下发失败：${errorText(e)}` });
@@ -270,15 +316,7 @@ window.addEventListener("message", (event) => {
   if (data.t === "ping") send({ t: "pong" });
 
 
-  if (data.t === "props" && data.props) {
-    if (instance) {
-      try {
-        instance.setProperties(data.props);
-      } catch (error) {
-        send({ t: "diag", msg: `选项下发失败：${errorText(error)}`, level: "warn" });
-      }
-    }
-  }
+  if (data.t === "props" && data.props) applyProps(data.props);
 });
 
 setInterval(() => {
@@ -288,3 +326,43 @@ setInterval(() => {
 }, 1000);
 
 send({ t: "boot" });
+/* 触摸：引擎只监听 mousemove，触摸屏不会产生视差。
+   这里把触摸坐标换算成归一化坐标，直接推给引擎的指针控制器。 */
+(function bindTouchPointer() {
+  const area = document.getElementById("stage") || document.body;
+  if (!area) return;
+  let last = { u: 0.5, v: 0.5 };
+
+  const push = (clientX, clientY, buttons) => {
+    const rect = area.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const u = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const v = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    last = { u, v };
+    if (!instance) return;
+    try {
+      instance.pushPointer(u, v, buttons);
+    } catch {
+      /* 引擎可能尚未就绪 */
+    }
+  };
+
+  area.addEventListener("touchstart", (event) => {
+    const touch = event.touches[0];
+    if (touch) push(touch.clientX, touch.clientY, 1);
+  }, { passive: true });
+
+  area.addEventListener("touchmove", (event) => {
+    const touch = event.touches[0];
+    if (touch) push(touch.clientX, touch.clientY, 1);
+  }, { passive: true });
+
+  area.addEventListener("touchend", () => {
+    if (!instance) return;
+    try {
+      instance.pushPointer(last.u, last.v, 0);
+    } catch {
+      /* 忽略 */
+    }
+  }, { passive: true });
+})();

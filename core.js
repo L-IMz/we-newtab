@@ -9,7 +9,6 @@
 const $ = (id) => document.getElementById(id);
 const vid = $("vid");
 const img = $("img");
-const stage = $("stage");
 // 关掉画中画/远程播放入口，避免视频壁纸弹出浏览器浮层
 vid.disablePictureInPicture = true;
 vid.disableRemotePlayback = true;
@@ -25,6 +24,8 @@ const DEFAULTS = {
   fit: "cover",
   rate: 1,
   scripts: true,
+  parallax: true,
+  monet: true,
   brightness: 100,
   volume: 0,
   audioSource: "off",

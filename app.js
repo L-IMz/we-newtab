@@ -9,18 +9,12 @@ async function main() {
   startClock();
   startIdle();
   bindPanel();
-  bindPanelTabs();
   await loadSettings();
   applyBrightness();
   bindSettings();
   watchPerformance();
   applyFit();
   vid.playbackRate = Number(state.settings.rate) || 1;
-
-  // 自定义页与壁纸库相互独立：没有壁纸也要能初始化组件面板
-  const stored = await chrome.storage.local.get(["tiles", "palette", "tab"]);
-  initBoard(stored);
-  setTab(stored.tab === "custom" ? "custom" : "wall");
 
   applyAudioSource();
   const roots = (await kvGet("roots")) || [];

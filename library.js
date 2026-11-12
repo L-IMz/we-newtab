@@ -325,3 +325,23 @@ async function startWatcher() {
     fsObserver = null;
   }
 }
+/* ---------------- 在 Steam 中浏览工坊 ---------------- */
+
+const WE_WORKSHOP_URL = "https://steamcommunity.com/app/431960/workshop/";
+
+// 只做跳转：订阅与下载交给 Steam 客户端，扩展这边只管发现已下载的壁纸
+function openSteamWorkshop() {
+  const url = WE_WORKSHOP_URL;
+  try {
+    if (chrome?.tabs?.create) {
+      const opened = chrome.tabs.create({ url });
+      if (opened && typeof opened.catch === "function") {
+        opened.catch(() => window.open(url, "_blank"));
+      }
+      return;
+    }
+  } catch {
+    /* 退回到 window.open */
+  }
+  window.open(url, "_blank");
+}

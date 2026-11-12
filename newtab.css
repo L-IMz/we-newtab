@@ -10,6 +10,7 @@
   --layer: rgba(40, 40, 40, .72);
   --accent: #60cdff;
   --accent-dim: rgba(96, 205, 255, .18);
+  --accent-ink: #003651;
   --radius-s: 4px;
   --ctrl-h: 32px; /* 控件统一高度，与按钮同节奏 */
   --col-ctrl: 156px; /* 设置行右侧控件列宽度统一 */
@@ -33,11 +34,22 @@ html, body {
 #stage { position: fixed; inset: 0; background: #0a0a0a; }
 #stage > * { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: none; }
 #stage > .on { display: block; }
-#vid, #img, #poster { object-fit: cover; }\n#poster { pointer-events: none; }
+
+/* 亮度遮罩：比 CSS filter 稳（filter 直接作用于 iframe 会让 WebGL 画布变黑） */
+#dim {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+#vid, #img { object-fit: cover; }
 
 /* 时钟 */
 #clock {
   position: fixed;
+  z-index: 3; /* 压在亮度遮罩之上 */
   left: 50%;
   top: 42%;
   transform: translate(-50%, -50%);
@@ -228,8 +240,8 @@ input[type="url"], input[type="password"], input[type="text"], input[type="numbe
 input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
-select:hover, input:hover { background-color: var(--card-hover); }
-select:focus, input:focus {
+select:hover, input:not([type="range"]):hover { background-color: var(--card-hover); }
+select:focus, input:not([type="range"]):focus {
   border-color: var(--fg-2);
   background-color: rgba(30, 30, 30, .9);
   box-shadow: inset 0 0 0 1px var(--fg-2);
@@ -247,10 +259,18 @@ button {
   cursor: pointer;
   transition: background .12s, border-color .12s;
 }
+button.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+}
+button.with-icon svg { flex: none; opacity: .85; }
+
 button:hover { background: var(--card-hover); }
 button:active { background: rgba(255, 255, 255, .0326); color: var(--fg-3); }
-button.primary { background: var(--accent); border-color: transparent; color: #003651; font-weight: 600; }
-button.selected { background: var(--accent); border-color: transparent; color: #003651; font-weight: 600; }
+button.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+button.selected { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
 button.primary:hover { filter: brightness(1.1); }
 button.link {
   height: auto;
@@ -281,7 +301,6 @@ button.link:hover { text-decoration: underline; background: none; }
 #roots .root button { height: 28px; padding: 0 10px; font-size: 12px; }
 
 /* 壁纸网格 */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 8px; }
 .card {
   position: relative;
   height: auto;
@@ -353,17 +372,73 @@ button.link:hover { text-decoration: underline; background: none; }
 }
 .prop-note { font-size: 11.5px; color: var(--fg-3); margin: 0; line-height: 1.4; }
 
-.prop-slider { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.prop-slider {
+  display: grid;
+  grid-template-columns: 1fr 46px;
+  align-items: center;
+  gap: 8px;
+}
 .prop-slider input[type="range"] { flex: 1; accent-color: var(--accent); height: var(--ctrl-h); }
-.prop-readout { font-size: 11px; color: var(--fg-3); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.prop-readout {
+  width: 46px;
+  font-size: 11px;
+  color: var(--fg-3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-/* WinUI 开关 */
+/* 分组标题（WE 的 group 属性） */
+.prop-group { display: block; padding: 12px 8px 4px; }
+.prop-group-head {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--stroke);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* 滑块：轨道按当前值填充，滑块头统一尺寸 */
 input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   height: var(--ctrl-h);
   margin: 0;
-  accent-color: var(--accent);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
+input[type="range"]:hover,
+input[type="range"]:focus {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) var(--pct, 0%), rgba(255, 255, 255, .22) var(--pct, 0%));
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid rgba(0, 0, 0, .35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+input[type="range"]:focus { outline: none; }
+input[type="range"]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--accent-dim); }
+
+/* WinUI 开关 */
 input.switch {
   appearance: none;
   width: 40px;
@@ -389,7 +464,7 @@ input.switch::after {
   transition: transform .15s, background .15s;
 }
 input.switch:checked { background: var(--accent); border-color: var(--accent); }
-input.switch:checked::after { transform: translateX(20px); background: #003651; }
+input.switch:checked::after { transform: translateX(20px); background: var(--accent-ink); }
 input.switch:hover::after { background: var(--fg); }
 
 input[type="color"] {
@@ -455,91 +530,7 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
 #gear:hover { opacity: 1; transform: rotate(25deg); }
 
 /* 面板大选项卡 */
-#panelTabs {
-  display: flex;
-  gap: 4px;
-  margin: 4px 0 6px;
-  padding: 4px;
-  border-radius: var(--radius-m);
-  background: rgba(255, 255, 255, .0403);
-}
-#panelTabs button {
-  flex: 1;
-  height: 36px;
-  border: 0;
-  border-radius: var(--radius-s);
-  background: transparent;
-  color: var(--fg-2);
-  font-size: 13.5px;
-  font-weight: 500;
-}
-#panelTabs button:hover { background: var(--card-hover); }
-#panelTabs button.on { background: var(--accent); color: #003651; font-weight: 600; }
-/* ---------------- 自定义页 ---------------- */
 
-#board {
-  position: fixed;
-  inset: 0;
-  z-index: 5;
-  padding: 100px 64px 96px;
-}
-#board[hidden] { display: none; }
-body.page-custom #clock { opacity: 0; pointer-events: none; }
-#board { padding: 100px 64px 96px; }
-
-#tiles {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-.tile {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 14px;
-  border-radius: var(--radius-m);
-  border: 1px solid var(--stroke);
-  background: rgba(22, 22, 26, .88);
-  color: var(--fg);
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-  transition: background .12s, border-color .12s, box-shadow .12s;
-  overflow: hidden;
-}
-.tile:hover { background: rgba(44, 44, 50, .9); border-color: var(--stroke-strong); }
-.tile.dragging { cursor: grabbing; transition: none; z-index: 10; box-shadow: 0 12px 30px rgba(0,0,0,.45); }
-.tile.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
-.tile .ti { line-height: 1; }
-.tile .tl {
-  font-size: 11px;
-  color: var(--fg-2);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-
-
-/* 教程折叠块 */
-.tut {
-  margin: 0 0 10px;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius-s);
-  padding: 8px 10px;
-  background: var(--card);
-  font-size: 12px;
-  color: var(--fg-2);
-}
-.tut summary { cursor: pointer; color: var(--accent); }
-.tut ol { margin: 8px 0 6px 18px; padding: 0; }
-.tut li { margin: 3px 0; }
-.tut a { color: var(--accent); }
 /* 壁纸分组（Fluent 2 列表容器） */
 .wallGroup { margin: 0 0 14px; }
 .wallGroupHead {
@@ -587,65 +578,6 @@ body.page-custom #clock { opacity: 0; pointer-events: none; }
   border-width: 2px;
 }
 .wallList::-webkit-scrollbar-corner { background: transparent; }
-.wallList::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.38); background-clip: content-box; }\n.wallList::-webkit-scrollbar-track { background: transparent; }
+.wallList::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.38); background-clip: content-box; }
+.wallList::-webkit-scrollbar-track { background: transparent; }
 .wallMore { margin: 6px 2px 0; }
-/* 已添加的源：Fluent 2 chip */
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 6px 0 10px;
-  border-radius: 13px;
-  border: 1px solid var(--stroke-strong);
-  background: rgba(255, 255, 255, .0605);
-  font-size: 12px;
-  color: var(--fg-2);
-}
-.chip button {
-  height: 18px;
-  width: 18px;
-  padding: 0;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--fg-3);
-  font-size: 13px;
-  line-height: 1;
-}
-.chip button:hover { background: rgba(255,255,255,.12); color: var(--fg); }
-/* 组件内容 */
-.wb { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; height: 100%; }
-.wb-clock { gap: 2px; }
-.wb-time { font-family: "Segoe UI Variable Display", var(--font); font-size: clamp(28px, 4vw, 56px); font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
-.wb-date { font-size: 12px; color: var(--fg-2); }
-.wb-search { flex-direction: row; gap: 8px; padding: 0; }
-.wb-search input {
-  flex: 1;
-  height: var(--ctrl-h);
-  border-radius: var(--radius-s);
-  border: 1px solid var(--stroke-strong);
-  background: rgba(0, 0, 0, .35);
-  color: var(--fg);
-  padding: 0 10px;
-  font: inherit;
-  font-size: 13px;
-  outline: none;
-}
-.wb-search input:focus { border-color: var(--accent); }
-.wb-search button { height: var(--ctrl-h); }
-.wb-note { align-items: flex-start; justify-content: flex-start; }
-.wb-text {
-  font-size: 12.5px;
-  color: var(--fg-2);
-  line-height: 1.5;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  width: 100%;
-}
-.wb-days { font-size: clamp(22px, 2.6vw, 34px); font-weight: 500; font-variant-numeric: tabular-nums; }
-.wb-temp { font-size: clamp(22px, 2.6vw, 34px); font-weight: 400; }
-.wb-label { font-size: 11px; color: var(--fg-3); }
-.wb-icon { gap: 4px; }

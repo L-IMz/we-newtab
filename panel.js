@@ -2,48 +2,22 @@
 
 /* 设置面板：选项卡、控件绑定、显卡偏好、空状态 */
 
-/* ---------------- 面板选项卡 ---------------- */
+/* ---------------- 面板开关 ---------------- */
 
-// 两个大选项卡：壁纸 / 自定义。切到自定义时主视图换成组件面板。
-function setTab(tab) {
-  const next = tab === "custom" ? "custom" : "wall";
-  state.tab = next;
-  $("tabWall").hidden = next !== "wall";
-  $("tabCustom").hidden = next !== "custom";
-  for (const button of document.querySelectorAll("#panelTabs button")) {
-    button.classList.toggle("on", button.dataset.tab === next);
-  }
-  boardSetVisible(next === "custom");
-  chrome.storage.local.set({ tab: next });
-}
-
-// 打开设置面板时切到「壁纸」页；关闭时也回到壁纸页，避免停留在自定义页出不来
-function setPanelOpen(open, tab) {
+// 齿轮打开设置面板；关闭后主视图仍是壁纸
+function setPanelOpen(open) {
   const panel = $("panel");
   const willOpen = open === undefined ? !panel.classList.contains("open") : open;
   panel.classList.toggle("open", willOpen);
-
-  if (willOpen) {
-    if (tab) setTab(tab);
-    refreshGpu();
-    // 面板刚展开时布局才可测，补一次行高对齐
-    requestAnimationFrame(() => {
-      alignAllWallLists();
-      // 滚动条出现后列宽会变，第二次对齐才准
-      setTimeout(alignAllWallLists, 120);
-    });
-  } else {
-    setTab("wall");
-  }
+  if (!willOpen) return;
+  refreshGpu();
+  // 面板刚展开时量不到行高，等一帧再对齐滚动区高度
+  requestAnimationFrame(() => {
+    alignAllWallLists();
+    setTimeout(alignAllWallLists, 120);
+  });
 }
 
-function bindPanelTabs() {
-  for (const button of document.querySelectorAll("#panelTabs button")) {
-    button.addEventListener("click", () => setTab(button.dataset.tab));
-  }
-  $("gear").addEventListener("click", () => setPanelOpen());
-  $("close").addEventListener("click", () => setPanelOpen(false));
-}
 /* ---------------- 显卡偏好 ---------------- */
 
 const GPU_HOST = "com.we.newtab.gpu";
@@ -238,6 +212,7 @@ function bindSettings() {
   const map = {
     fps: "fps", dpr: "dpr", aa: "aa", particles: "particles", post: "post",
     fit: "fit", rate: "rate", scripts: "scripts", audioSource: "audioSource", bridgePort: "bridgePort",
+    parallax: "parallax", monet: "monet",
     brightness: "brightness", volume: "volume", rotate: "rotate",
     rotateEvery: "rotateEvery", rotateRandom: "rotateRandom",
   };
@@ -246,7 +221,7 @@ function bindSettings() {
     const el = $(id);
     if (el.type === "checkbox") el.checked = !!state.settings[key];
     else el.value = String(state.settings[key]);
-    el.addEventListener(el.type === "range" || el.type === "checkbox" ? "input" : "change", () => {
+    el.addEventListener(el.type === "range" || el.type === "checkbox" ? "input" : "change", async () => {
       state.settings[key] = el.type === "checkbox" ? el.checked : el.value;
       if (key === "fps" || key === "dpr" || key === "brightness" || key === "volume" || key === "rotateEvery" || key === "bridgePort")
         state.settings[key] = Number(state.settings[key]) || 0;
@@ -255,6 +230,20 @@ function bindSettings() {
         vid.playbackRate = state.settings.rate;
       }
       if (key === "fit") applyFit();
+      if (key === "parallax") {
+        // 同步壁纸自己的「视差」属性，两边始终一致；再重新装配让深度生效
+        const pkey = state.parallaxPropKey;
+        if (pkey && state.propValues) {
+          state.propValues[pkey] = state.settings.parallax;
+          propView?.refresh(state.propValues);
+          pushProps(state.propValues);
+          // 重新装配会从存储里读属性值，必须先落盘再重装
+          await saveWallProps(propWallId, state.propValues);
+          state.parallaxDirty = false;
+        }
+        remountScene();
+      }
+      if (key === "monet") applyMonet();
       if (key === "brightness") applyBrightness();
       if (key === "volume") applyVolume();
       if (key === "rotate" || key === "rotateEvery" || key === "rotateRandom") scheduleRotation();
@@ -319,10 +308,11 @@ function applyLiveSettings() {
 }
 
 function bindPanel() {
-
+  $("gear").addEventListener("click", () => setPanelOpen());
+  $("close").addEventListener("click", () => setPanelOpen(false));
   $("rescan").addEventListener("click", () => rescan().catch(reportError));
+  $("openWorkshop").addEventListener("click", openSteamWorkshop);
   bindGpu();
-  initSources();
 
 
   $("addRoot").addEventListener("click", async () => {
@@ -385,9 +375,9 @@ function startIdle() {
   const wake = () => {
     document.body.classList.remove("bare");
     clearTimeout(idleTimer);
-    if ($("panel").classList.contains("open") || state.tab === "custom") return;
+    if ($("panel").classList.contains("open")) return;
     idleTimer = setTimeout(() => {
-      if (state.tab !== "custom") document.body.classList.add("bare");
+      document.body.classList.add("bare");
     }, 4000);
   };
   for (const ev of ["mousemove", "keydown", "mousedown", "wheel"]) window.addEventListener(ev, wake, { passive: true });

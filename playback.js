@@ -19,6 +19,18 @@ async function saveWallProps(id, values) {
 
 // 把当前值下发给正在播放的壁纸
 function pushProps(values) {
+  // 壁纸自带的「视差」布尔属性与扩展开关保持同步
+  const pkey = state.parallaxPropKey;
+  if (pkey && values[pkey] !== undefined) {
+    const on = values[pkey] !== false;
+    if (on !== state.settings.parallax) {
+      state.settings.parallax = on;
+      const box = $("parallax");
+      if (box) box.checked = on;
+      saveSettings();
+      state.parallaxDirty = true; // 由保存完成后的回调触发重新装配
+    }
+  }
   state.propValues = { ...values };
   if (!state.current) return;
   if (state.current.type === "scene") {
@@ -44,12 +56,26 @@ async function prepareProps(wall) {
   const saved = (await readAllProps())[wall.id] || {};
   const values = { ...defaults, ...saved };
 
+  // 壁纸若定义了名为「视差」的布尔属性，加载时用它的值作为扩展开关初值
+  const parallaxDef = defs.find((entry) => entry.def.type === "bool" && /视差/.test(entry.def.text || ""));
+  state.parallaxPropKey = parallaxDef ? parallaxDef.name : null;
+  if (state.parallaxPropKey && values[state.parallaxPropKey] !== undefined) {
+    state.settings.parallax = values[state.parallaxPropKey] !== false;
+    const box = $("parallax");
+    if (box) box.checked = state.settings.parallax;
+    saveSettings();
+  }
+
   section.hidden = false;
   propView = renderProperties(box, defs, values, async (name, value) => {
     values[name] = value;
     propView?.refresh(values);
     pushProps(values);
     await saveWallProps(propWallId, values);
+    if (state.parallaxDirty) {
+      state.parallaxDirty = false;
+      remountScene();
+    }
   });
   propView.refresh(values);
   state.propValues = values;
@@ -80,6 +106,13 @@ function stopAll() {
   if (state.sceneReady) sceneFrame.contentWindow?.postMessage({ t: "stop" }, "*");
 }
 
+// 视差深度在装配期写入图层快照，切换后必须重新装配才生效
+function remountScene() {
+  const wall = state.walls.find((item) => item.id === state.current?.id);
+  if (!wall || wall.type !== "scene") return;
+  play(wall).catch(() => {});
+}
+
 async function play(wall) {
   stopAll();
   state.effectiveDpr = null;
@@ -106,8 +139,7 @@ async function play(wall) {
     el.classList.toggle("active", el.dataset.id === wall.id);
   });
   chrome.storage.local.set({ lastWall: wall.id });
-  // 莫奈取色：换壁纸后按新壁纸的主色更新主题
-  applyMonet(true).catch(() => {});
+  applyMonet(wall);
   applyBrightness();
   applyVolume();
   scheduleRotation();
@@ -193,6 +225,7 @@ async function scenePayload(wall) {
       dpr: state.effectiveDpr ?? (Number(state.settings.dpr) || 0),
       fit: state.settings.fit,
       scripts: !!state.settings.scripts,
+      parallax: state.settings.parallax !== false,
       volume: (Number(state.settings.volume) || 0) / 100,
       quality: {
         antiAliasing: state.settings.aa,
@@ -259,8 +292,10 @@ window.addEventListener("message", (event) => {
 /* ---------------- 亮度 / 音量 / 轮换 / 音频 ---------------- */
 
 function applyBrightness() {
-  const value = Number(state.settings.brightness) || 100;
-  stage.style.filter = value >= 100 ? "" : `brightness(${(value / 100).toFixed(2)})`;
+  const value = Math.max(0, Math.min(100, Number(state.settings.brightness) || 100));
+  $("dim").style.opacity = (value >= 100 ? 0 : (100 - value) / 100).toFixed(2);
+  // 清掉旧版本可能残留在舞台上的滤镜
+  $("stage").style.filter = "";
 }
 
 function applyVolume() {
@@ -341,6 +376,7 @@ function stopMic() {
 function activeFrameOrNull() {
   return state.sceneReady ? sceneFrame : null;
 }
+
 /* ---------------- 系统音频桥（media-bridge） ---------------- */
 
 const bridge = { source: null, timer: 0, alive: false };
@@ -417,3 +453,5 @@ async function applyAudioSource() {
   else if (source === "bridge") await startBridge();
   else activeFrameOrNull()?.contentWindow?.postMessage({ t: "audio", off: true }, "*");
 }
+
+

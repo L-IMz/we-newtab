@@ -3,7 +3,7 @@
 /* 壁纸自定义选项：解析 project.json 的 general.properties，生成控件并求值 condition。
    只处理文本与数值，不执行壁纸提供的任何 HTML/脚本。 */
 
-const PROP_TYPES = new Set(["slider", "color", "bool", "combo", "textinput", "text", "file", "textinput"]);
+const PROP_TYPES = new Set(["slider", "color", "bool", "combo", "textinput", "text", "group", "file"]);
 
 function plainText(html) {
   return String(html || "")
@@ -186,6 +186,14 @@ function colorFromHexOrRgb(value) {
   return colorStringToHex(text);
 }
 
+// 滑块数值显示：小数按 precision 补零，整数取整
+function formatPropValue(def, raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return String(raw ?? "");
+  const precision = Number.isFinite(Number(def.precision)) ? Number(def.precision) : def.fraction ? 2 : 0;
+  return def.fraction ? n.toFixed(Math.min(4, Math.max(0, precision))) : String(Math.round(n));
+}
+
 const el = (tag, className) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -199,6 +207,17 @@ function renderProperties(container, defs, values, onChange) {
 
   for (const { name, def } of defs) {
     const row = el("div", "prop");
+    row.dataset.prop = name; // 便于调试与自动化定位
+
+    if (def.type === "group") {
+      row.className = "prop prop-group";
+      const head = el("h4", "prop-group-head");
+      head.textContent = labelOf(def) || name;
+      row.appendChild(head);
+      container.appendChild(row);
+      rows.push({ row, def, name });
+      continue;
+    }
 
     if (def.type === "text") {
       row.className = "prop prop-text";
@@ -226,20 +245,27 @@ function renderProperties(container, defs, values, onChange) {
     } else if (def.type === "slider") {
       const min = Number(def.min ?? 0);
       const max = Number(def.max ?? 100);
-      control = el("input");
-      control.type = "range";
-      control.min = String(min);
-      control.max = String(max);
-      control.step = String(def.step ?? (max - min > 20 ? 1 : 0.01));
-      control.value = String(values[name] ?? min);
+      const slider = el("input");
+      slider.type = "range";
+      slider.min = String(min);
+      slider.max = String(max);
+      slider.step = String(def.step ?? (def.fraction ? 0.01 : 1));
+      slider.value = String(values[name] ?? min);
+
       const readout = el("span", "prop-readout");
-      readout.textContent = control.value;
-      control.addEventListener("input", () => {
-        readout.textContent = control.value;
-        onChange(name, Number(control.value));
+      const paint = () => {
+        readout.textContent = formatPropValue(def, slider.value);
+        const pct = max > min ? ((Number(slider.value) - min) / (max - min)) * 100 : 0;
+        slider.style.setProperty("--pct", `${Math.max(0, Math.min(100, pct))}%`);
+      };
+      paint();
+      slider.addEventListener("input", () => {
+        paint();
+        onChange(name, Number(slider.value));
       });
+
       const wrap = el("div", "prop-slider");
-      wrap.append(control, readout);
+      wrap.append(slider, readout);
       control = wrap;
     } else if (def.type === "combo") {
       // 选项值可能是字符串（"1"）也可能是数字（1），必须原样回传，WE 的壁纸依赖这个类型
@@ -281,9 +307,12 @@ function renderProperties(container, defs, values, onChange) {
   return {
     // 依据当前值刷新 condition 可见性
     refresh(nextValues) {
+      // 分组（group）属性没有值，条件里引用它时按“始终成立”处理
+      const evalValues = { ...nextValues };
+      for (const { name, def } of defs) if (def.type === "group") evalValues[name] = true;
       for (const { row, def } of rows) {
         if (!def.condition) continue;
-        row.hidden = !evalCondition(def.condition, nextValues);
+        row.hidden = !evalCondition(def.condition, evalValues);
       }
     },
   };
