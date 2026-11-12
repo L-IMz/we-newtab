@@ -340,31 +340,6 @@ window.addEventListener("message", (event) => {
   }
 });
 
-
-/* ---------------- 失焦降帧 ---------------- */
-
-let blurFpsTimer = 0;
-let windowFocused = document.hasFocus();
-
-// 窗口失去焦点时（切到别的程序）把场景压到 10 FPS，回到前台恢复设置值
-function scheduleBlurFps() {
-  clearTimeout(blurFpsTimer);
-  blurFpsTimer = setTimeout(() => {
-    if (!state.sceneReady || state.current?.type !== "scene") return;
-    const fps = windowFocused ? Number(state.settings.fps) || 30 : 10;
-    sceneFrame.contentWindow?.postMessage({ t: "update", opts: { fps } }, "*");
-  }, 800);
-}
-
-window.addEventListener("blur", () => {
-  windowFocused = false;
-  scheduleBlurFps();
-});
-window.addEventListener("focus", () => {
-  windowFocused = true;
-  scheduleBlurFps();
-});
-
 /* ---------------- 亮度 / 音量 / 轮换 / 音频 ---------------- */
 
 // 应用亮度遮罩
