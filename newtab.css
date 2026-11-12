@@ -11,6 +11,8 @@
   --accent: #60cdff;
   --accent-dim: rgba(96, 205, 255, .18);
   --radius-s: 4px;
+  --ctrl-h: 32px; /* 控件统一高度，与按钮同节奏 */
+  --col-ctrl: 156px; /* 设置行右侧控件列宽度统一 */
   --radius-m: 8px;
   --radius-l: 12px;
   --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
@@ -177,7 +179,7 @@ body.bare #clock, body.bare #gear { opacity: 0; pointer-events: none; }
 /* 表单行：WinUI 设置页的 label / control 双列 */
 label {
   display: grid;
-  grid-template-columns: 1fr 156px;
+  grid-template-columns: 1fr var(--col-ctrl);
   align-items: center;
   gap: 12px;
   margin: 0;
@@ -193,11 +195,18 @@ label.check {
   gap: 10px;
   grid-template-columns: none;
 }
-label.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+/* 复选框放到右侧控件列，和其它行的控件右对齐 */
+label.check input {
+  order: 2;
+  margin: 0 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
 
-select, input[type="url"], input[type="password"], input[type="text"] {
+select, input[type="url"], input[type="password"], input[type="text"], input[type="number"] {
   width: 100%;
-  height: 30px;
+  height: var(--ctrl-h);
   padding: 0 30px 0 10px;
   border-radius: var(--radius-s);
   border: 1px solid var(--stroke-strong);
@@ -212,7 +221,13 @@ select, input[type="url"], input[type="password"], input[type="text"] {
   outline: none;
   transition: border-color .12s, background-color .12s;
 }
-input[type="url"], input[type="password"], input[type="text"] { background-image: none; padding-right: 10px; }
+input[type="url"], input[type="password"], input[type="text"], input[type="number"] {
+  background-image: none;
+  padding-right: 10px;
+}
+input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
 select:hover, input:hover { background-color: var(--card-hover); }
 select:focus, input:focus {
   border-color: var(--fg-2);
@@ -221,7 +236,7 @@ select:focus, input:focus {
 }
 
 button {
-  height: 32px;
+  height: var(--ctrl-h);
   padding: 0 14px;
   border-radius: var(--radius-s);
   border: 1px solid var(--stroke-strong);
@@ -263,7 +278,7 @@ button.link:hover { text-decoration: underline; background: none; }
   background: var(--card);
 }
 #roots .root span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#roots .root button { height: 26px; padding: 0 10px; font-size: 12px; }
+#roots .root button { height: 28px; padding: 0 10px; font-size: 12px; }
 
 /* 壁纸网格 */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 8px; }
@@ -306,15 +321,24 @@ button.link:hover { text-decoration: underline; background: none; }
 /* 壁纸选项 */
 .prop {
   display: grid;
-  grid-template-columns: 1fr 158px;
+  grid-template-columns: 1fr var(--col-ctrl);
   align-items: center;
   gap: 12px;
-  padding: 5px 8px;
+  padding: 7px 8px;
   border-radius: var(--radius-s);
 }
 .prop:hover { background: var(--card); }
 .prop[hidden] { display: none; }
-.prop-label { font-size: 12.5px; color: var(--fg-2); line-height: 1.35; }
+.prop-label {
+  display: block;
+  padding: 0;
+  grid-template-columns: none;
+  font-size: 13px;
+  color: var(--fg-2);
+  line-height: 1.35;
+  min-width: 0;
+}
+.prop-label:hover { background: none; }
 .prop-text, .prop-note {
   grid-column: 1 / -1;
   padding: 4px 8px;
@@ -329,12 +353,17 @@ button.link:hover { text-decoration: underline; background: none; }
 }
 .prop-note { font-size: 11.5px; color: var(--fg-3); margin: 0; line-height: 1.4; }
 
-.prop-slider { display: flex; align-items: center; gap: 8px; }
-.prop-slider input[type="range"] { flex: 1; accent-color: var(--accent); height: 20px; }
+.prop-slider { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.prop-slider input[type="range"] { flex: 1; accent-color: var(--accent); height: var(--ctrl-h); }
 .prop-readout { font-size: 11px; color: var(--fg-3); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* WinUI 开关 */
-input[type="range"] { accent-color: var(--accent); width: 100%; }
+input[type="range"] {
+  width: 100%;
+  height: var(--ctrl-h);
+  margin: 0;
+  accent-color: var(--accent);
+}
 input.switch {
   appearance: none;
   width: 40px;
@@ -365,8 +394,8 @@ input.switch:hover::after { background: var(--fg); }
 
 input[type="color"] {
   width: 100%;
-  height: 30px;
-  padding: 2px;
+  height: var(--ctrl-h);
+  padding: 3px;
   border-radius: var(--radius-s);
   border: 1px solid var(--stroke-strong);
   background: rgba(255, 255, 255, .0605);
@@ -470,19 +499,19 @@ body.page-custom #clock { opacity: 0; pointer-events: none; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
+  padding: 14px;
   border-radius: var(--radius-m);
   border: 1px solid var(--stroke);
-  background: rgba(30, 30, 34, .82);
+  background: rgba(22, 22, 26, .88);
   color: var(--fg);
   cursor: grab;
   user-select: none;
   touch-action: none;
   transition: background .12s, border-color .12s, box-shadow .12s;
   overflow: hidden;
-  padding: 6px;
 }
-.tile:hover { background: rgba(50, 50, 56, .62); border-color: var(--stroke-strong); }
+.tile:hover { background: rgba(44, 44, 50, .9); border-color: var(--stroke-strong); }
 .tile.dragging { cursor: grabbing; transition: none; z-index: 10; box-shadow: 0 12px 30px rgba(0,0,0,.45); }
 .tile.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
 .tile .ti { line-height: 1; }
@@ -591,10 +620,10 @@ body.page-custom #clock { opacity: 0; pointer-events: none; }
 .wb-clock { gap: 2px; }
 .wb-time { font-family: "Segoe UI Variable Display", var(--font); font-size: clamp(28px, 4vw, 56px); font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
 .wb-date { font-size: 12px; color: var(--fg-2); }
-.wb-search { flex-direction: row; gap: 6px; padding: 0 4px; }
+.wb-search { flex-direction: row; gap: 8px; padding: 0; }
 .wb-search input {
   flex: 1;
-  height: 34px;
+  height: var(--ctrl-h);
   border-radius: var(--radius-s);
   border: 1px solid var(--stroke-strong);
   background: rgba(0, 0, 0, .35);
@@ -605,7 +634,7 @@ body.page-custom #clock { opacity: 0; pointer-events: none; }
   outline: none;
 }
 .wb-search input:focus { border-color: var(--accent); }
-.wb-search button { height: 34px; }
+.wb-search button { height: var(--ctrl-h); }
 .wb-note { align-items: flex-start; justify-content: flex-start; }
 .wb-text {
   font-size: 12.5px;
