@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>新标签页</title>
+<link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+
+
+<div id="stage">
+  <video id="vid" muted loop playsinline disablepictureinpicture disableremoteplayback aria-hidden="true"></video>
+  <img id="img" alt="">
+  <iframe id="scene" src="render.html" title="壁纸渲染"></iframe>
+</div>
+
+<section id="board" hidden>
+  <div id="tiles"></div>
+</section>
+
+<main id="clock">
+  <div id="time">--:--</div>
+  <div id="date"></div>
+</main>
+
+<div id="status" hidden></div>
+
+<button id="gear" title="设置" aria-label="设置">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1"/></svg>
+</button>
+
+<aside id="panel" aria-label="设置面板">
+  <header>
+    <h1>设置</h1>
+    <button id="close" title="关闭" aria-label="关闭">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </header>
+
+  <nav id="panelTabs" role="tablist">
+    <button data-tab="wall" class="on" role="tab">壁纸</button>
+    <button data-tab="custom" role="tab">自定义</button>
+  </nav>
+
+  <div id="tabWall">
+    <section>
+      <h2>壁纸目录</h2>
+      <p class="hint">选择 Wallpaper Engine 的 <code>projects</code> 或 Steam 的
+        <code>steamapps\workshop\content\431960</code> 目录。可添加多个。</p>
+      <div id="roots"></div>
+      <div class="row">
+        <button id="addRoot" class="primary">添加目录…</button>
+        <button id="rescan">重新扫描</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>壁纸库 <span id="count" class="badge">0</span></h2>
+      <div id="walls"></div>
+    </section>
+
+    <section id="propsSection" hidden>
+      <h2>壁纸选项 <button id="propsReset" class="link">重置</button></h2>
+      <div id="props"></div>
+    </section>
+
+    <section>
+      <h2>动态效果 <span id="fpsNow" class="badge">—</span></h2>
+      <label>帧率上限
+        <select id="fps">
+          <option value="30">30 FPS</option>
+          <option value="60">60 FPS</option>
+          <option value="90">90 FPS</option>
+          <option value="120">120 FPS</option>
+          <option value="144">144 FPS</option>
+        </select>
+      </label>
+      <label>渲染分辨率
+        <select id="dpr">
+          <option value="0.5">0.5×（最省电）</option>
+          <option value="0.75">0.75×</option>
+          <option value="1">1.0×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2.0×（最清晰）</option>
+          <option value="0">跟随显示器缩放</option>
+        </select>
+      </label>
+      <label>抗锯齿
+        <select id="aa">
+          <option value="off">关闭</option>
+          <option value="fxaa">FXAA</option>
+          <option value="msaa2">MSAA 2×</option>
+          <option value="msaa4">MSAA 4×</option>
+        </select>
+      </label>
+      <label>粒子质量
+        <select id="particles">
+          <option value="high">高</option>
+          <option value="medium">中</option>
+          <option value="low">低</option>
+          <option value="off">关闭</option>
+        </select>
+      </label>
+      <label>后处理
+        <select id="post">
+          <option value="high">高</option>
+          <option value="medium">中</option>
+          <option value="low">低</option>
+          <option value="off">关闭</option>
+        </select>
+      </label>
+      <label>填充模式
+        <select id="fit">
+          <option value="cover">铺满（裁切）</option>
+          <option value="contain">完整显示</option>
+          <option value="stretch">拉伸</option>
+        </select>
+      </label>
+      <label>视频播放速度
+        <select id="rate">
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1">1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+      </label>
+      <label>亮度<input id="brightness" type="range" min="20" max="100" step="1" value="100"></label>
+      <label>场景音量<input id="volume" type="range" min="0" max="100" step="1" value="0"></label>
+      <label class="check"><input type="checkbox" id="scripts"> 执行壁纸自带脚本（SceneScript）</label>
+      <label>音频响应
+        <select id="audioSource">
+          <option value="off">关闭</option>
+          <option value="mic">麦克风</option>
+          <option value="bridge">系统音频（media-bridge）</option>
+        </select>
+      </label>
+      <label>桥接端口<input id="bridgePort" type="number" min="1024" max="65535" step="1" value="8765"></label>
+      <label class="check"><input type="checkbox" id="rotate"> 自动轮换壁纸</label>
+      <label>轮换间隔
+        <select id="rotateEvery">
+          <option value="5">5 分钟</option>
+          <option value="10">10 分钟</option>
+          <option value="30">30 分钟</option>
+          <option value="60">1 小时</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="rotateRandom"> 随机顺序</label>
+    </section>
+
+    <section>
+      <h2>显卡 <span id="gpuState" class="badge">—</span></h2>
+      <p class="hint">浏览器默认可能被系统指派到核显。切换后需要重启浏览器才会生效。</p>
+      <p class="hint" id="gpuRenderer">当前渲染器：检测中…</p>
+      <div class="row">
+        <button id="gpuHigh">独显优先</button>
+        <button id="gpuLow">节能（核显）</button>
+        <button id="gpuAuto">跟随系统</button>
+      </div>
+      <p class="hint" id="gpuMsg"></p>
+      <div id="gpuInstall" hidden>
+        <p class="hint">切换显卡偏好需要一次性的本地辅助程序——浏览器没有提供修改该设置的 API。</p>
+        <div class="row">
+          <button id="gpuDownload">下载安装脚本</button>
+          <button id="gpuRetry">已安装，重试</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>在线壁纸源 <span id="srcCount" class="badge">0</span></h2>
+      <p class="hint">从第三方壁纸站搜索并直接在标签页里播放（图片 / 动态 / 视频）。
+        场景壁纸（scene.pkg）只有 WE 工坊提供，第三方站点没有该格式。</p>
+
+      <details class="tut">
+        <summary>如何添加壁纸站接口</summary>
+        <p class="hint">填 4 个东西：接口地址、列表路径、字段映射。地址里可用占位符
+          <code>{q}</code> 关键词、<code>{page}</code> 页码、<code>{key}</code> 密钥。</p>
+        <ol>
+          <li><b>Wallhaven</b>（图片，可免密钥）：地址
+            <code>https://wallhaven.cc/api/v1/search?q={q}&amp;page={page}</code>，列表 <code>data</code>，
+            预览 <code>thumbs.small</code>，文件 <code>path</code></li>
+          <li><b>Giphy</b>（动态图，需密钥）：地址
+            <code>https://api.giphy.com/v1/gifs/search?api_key={key}&amp;q={q}&amp;limit=24</code>，
+            列表 <code>data</code>，预览 <code>images.fixed_width.url</code>，文件 <code>images.original.url</code></li>
+          <li><b>Pexels</b>（视频/图片，需密钥）：地址
+            <code>https://api.pexels.com/videos/search?query={q}&amp;per_page=24</code>，请求头
+            <code>Authorization</code>，列表 <code>videos</code>，预览 <code>image</code>，
+            文件 <code>video_files.0.link</code></li>
+          <li><b>Pixabay</b>（图片，需密钥）：地址
+            <code>https://pixabay.com/api/?key={key}&amp;q={q}&amp;per_page=24</code>，列表
+            <code>hits</code>，预览 <code>webformatURL</code>，文件 <code>largeImageURL</code></li>
+        </ol>
+        <p class="hint">其它站点：按同样格式填写即可，字段用点号路径，数组用数字下标
+          （如 <code>results.0.thumb</code>）。</p>
+      </details>
+
+      <div id="sourceList" class="chips"></div>
+
+      <label>名称<input id="srcName" type="text" placeholder="例如 Wallhaven"></label>
+      <label>类型
+        <select id="srcType">
+          <option value="image">图片</option>
+          <option value="gif">动态图</option>
+          <option value="video">视频</option>
+        </select>
+      </label>
+      <label>接口地址<input id="srcUrl" type="url" placeholder="https://.../search?q={q}&page={page}"></label>
+      <label>列表路径<input id="srcList" type="text" placeholder="data"></label>
+      <label>字段：预览<input id="srcPreview" type="text" placeholder="thumbs.small"></label>
+      <label>字段：文件<input id="srcFile" type="text" placeholder="path"></label>
+      <label>字段：标题<input id="srcTitle" type="text" placeholder="id（可留空）"></label>
+      <label>密钥<input id="srcKey" type="password" placeholder="{key} 处替换"></label>
+      <label>请求头名（可选）<input id="srcHeaderName" type="text" placeholder="Authorization"></label>
+      <div class="row">
+        <button id="srcSave">保存源</button>
+        <button id="srcPreset">载入示例</button>
+      </div>
+
+      <label>使用源<select id="srcPick"></select></label>
+      <label>搜索<input id="srcQuery" type="text" placeholder="关键词，留空为热门"></label>
+      <div class="row"><button id="srcSearch">搜索壁纸</button><button id="srcClear">清空结果</button></div>
+      <div id="srcResults" class="grid"></div>
+      <p class="hint" id="srcStatus"></p>
+    </section>
+  </div>
+
+  <div id="tabCustom" hidden>
+    <section>
+      <h2>组件 <span id="tileCount" class="badge">0</span></h2>
+      <p class="hint">自定义页是一个 12 列网格，组件拖动后自动吸附。点组件可在这里编辑。</p>
+      <div class="row">
+        <select id="widgetType">
+          <option value="icon">图标</option>
+          <option value="clock">时钟</option>
+          <option value="search">搜索</option>
+          <option value="note">便签</option>
+          <option value="countdown">倒计时</option>
+          <option value="weather">天气</option>
+        </select>
+        <button id="addTile" class="primary">＋ 添加组件</button>
+      </div>
+      <div class="row"><button id="monetBtn">从壁纸取色</button></div>
+    </section>
+
+    <section id="tileSection" hidden>
+      <h2>组件设置</h2>
+      <label>名称<input id="tileLabel" type="text" maxlength="12"></label>
+      <div id="cfgIcon">
+        <label>图标<input id="tileIcon" type="text" maxlength="4" placeholder="🙂 或文字"></label>
+      </div>
+      <div id="cfgClock" hidden>
+        <label class="check"><input type="checkbox" id="cfgClock12"> 12 小时制</label>
+      </div>
+      <div id="cfgSearch" hidden>
+        <label>搜索引擎
+          <select id="cfgSearchEngine">
+            <option value="bing">Bing</option>
+            <option value="google">Google</option>
+            <option value="baidu">百度</option>
+            <option value="duck">DuckDuckGo</option>
+          </select>
+        </label>
+      </div>
+      <div id="cfgNote" hidden>
+        <label>便签内容<textarea id="cfgNoteText" rows="3" placeholder="写点什么"></textarea></label>
+      </div>
+      <div id="cfgCountdown" hidden>
+        <label>目标日期<input id="cfgCountDate" type="date"></label>
+      </div>
+      <div id="cfgWeather" hidden>
+        <label>城市<input id="cfgWeatherCity" type="text" placeholder="北京"></label>
+      </div>
+      <label>宽度
+        <select id="tileW"><option value="1">1 格</option><option value="2">2 格</option><option value="3">3 格</option><option value="4">4 格</option></select>
+      </label>
+      <label>高度
+        <select id="tileH"><option value="1">1 格</option><option value="2">2 格</option><option value="3">3 格</option></select>
+      </label>
+      <label>颜色<input id="tileColor" type="color"></label>
+      <label>字号
+        <select id="tileFont">
+          <option value="14">小</option>
+          <option value="18">中</option>
+          <option value="24">大</option>
+          <option value="32">特大</option>
+        </select>
+      </label>
+      <div class="row"><button id="tileDelete">删除组件</button></div>
+    </section>
+  </div>
+</aside>
+
+<script src="core.js"></script>
+<script src="props.js"></script>
+<script src="sources.js"></script>
+<script src="board.js"></script>
+<script src="library.js"></script>
+<script src="playback.js"></script>
+<script src="panel.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

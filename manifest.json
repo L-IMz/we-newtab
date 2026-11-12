@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "WE 壁纸新标签页",
+  "version": "1.0.0",
+  "version_name": "1.0.0-alpha",
+  "description": "用 Wallpaper Engine 的壁纸替换新标签页：场景 / 视频 / 图片，支持视差、属性与音频响应",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuOPHDQeFNmwP/1HXfadXJCHPcenL6mM4WXjIJYMRC/xAU6ayU8m2s6FZwiUV1KlCxA5pydBb9OkbNr+GNb6AkNk4kjoXcwf0nbz4ZWxK6toT9g4ML1iMylFnnnSh4tHWqT5dQg5GjNck2vOOJYntUKDGvf7aAvLXXCixcEsy9V+mebFKGRZt1+/BtzRQUieKyBK0qQ4EXMg9s2ZV7vsbmepwd3d4uebaD7DiqzAqDQ6q2Ao9ZrrRhmSSDd+E1BsmfiF6l6VirTOCcRo40wWNorTvSlLPaxxrpxyHWFYnH0TDGWUpF5z1lq39E5OoeM583se7Fnn287WNPpvP9mbXPwIDAQAB",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "chrome_url_overrides": { "newtab": "newtab.html" },
+  "permissions": ["storage", "unlimitedStorage", "nativeMessaging", "downloads"],
+  "host_permissions": ["*://*/*"],
+  "sandbox": { "pages": ["render.html"] },
+  "content_security_policy": {
+    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; media-src 'self' data: blob: http: https:; connect-src 'self' data: blob: http: https:; frame-src 'self' data: blob: http: https:"
+  }
+}
