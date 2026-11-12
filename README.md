@@ -1,6 +1,6 @@
 # Wallpaper Engine New Tab WE壁纸标签页
 
-<p align="center"><img src="docs/img/hero.png" alt="新标签页"></p>
+![新标签页](docs/img/hero.png)
 
 ## 它能做什么
 
@@ -10,9 +10,7 @@
 
 ### 设置面板
 
-<p align="center"><img src="docs/img/settings.png" alt="设置面板"></p>
-
----
+![设置面板](docs/img/settings.png)
 
 ## 装上试试
 
@@ -28,30 +26,26 @@ Steam 创意工坊的壁纸通常在：
 
 也可以直接选 Wallpaper Engine 的 `projects` 目录，两种结构都认。
 
----
-
 ## 在 Steam 里找新壁纸
 
 设置 → 壁纸目录 →「在 Steam 中浏览工坊」会在新标签页打开 Wallpaper Engine 的创意工坊页面。
 点订阅后下载交给 Steam 客户端，下完扩展会自动扫到（目录监听），不用回设置里刷新。
 
----
-
 ## 场景渲染协议
 
 宿主页和沙箱渲染页之间只有 `postMessage`，一条场景的生命周期长这样：
 
-```text
-宿主                                              沙箱渲染页
- │  {t:"ping"} ──────────────────────────────▶  探活（沙箱页可能比宿主先就绪）
- │  ◀──────────────────────────────────────── {t:"pong"}
+```
+宿主                                  沙箱渲染页
+ │  {t:"ping"} ───────────────────────▶  探活（沙箱页可能比宿主先就绪）
+ │  ◀─────────────────────── {t:"pong"}
  │  {t:"mount", pkgFile|entry,
- │   project, props, opts} ──────────────────▶  createScene() + load()
- │                                                └─ {t:"read", id, path}
- │  ◀──────────────────────────────────────── {t:"read:res", file}   宿主用 FS Access 读盘回传
- │  ◀──────────────────────────────────────── {t:"ready", width, height, layers}
+ │   project, props, opts} ────────────▶  createScene() + load()
+ │                                        └─ {t:"read", id, path}
+ │  ◀──────────────── {t:"read:res", file}   宿主用 FS Access 读盘回传
+ │  ◀────────────────────── {t:"ready", width, height, layers}
  │  {t:"props"} / {t:"update"} / {t:"volume"} / {t:"audio"}
- │  ◀──────────────────────────────────────── {t:"stats"} / {t:"diag"} / {t:"error"}
+ │  ◀──────────── {t:"stats"} / {t:"diag"} / {t:"error"}
 ```
 
 | mount 字段 | 说明 |
@@ -60,8 +54,6 @@ Steam 创意工坊的壁纸通常在：
 | `entry` | 散装工程入口（如 `scene.json`），和 `pkgFile` 二选一 |
 | `props` | 用户属性初值，装配后会再下发一次（有些壁纸装配期不读属性） |
 | `opts` | `fps` / `dpr` / `fit` / `scripts` / `quality` / `volume` |
-
----
 
 ## 有多快
 
@@ -77,8 +69,6 @@ Steam 创意工坊的壁纸通常在：
 时间基本都花在解析、贴图上传和着色器编译上。想压到 250ms 以内，只有很小的场景能做到——
 试过关后处理、预热 WebGL、保留解析缓存，收益要么没有要么不明显，所以别信"秒开 3A 场景"这种话。
 
----
-
 ## 系统音频（可选）
 
 浏览器读不到系统声音，这条只能借本地中间件：
@@ -92,8 +82,6 @@ media-bridge-win32-x64.exe serve --http 127.0.0.1:8765
 
 没装也没关系，默认用引擎自带的模拟频谱，只是不跟真实声音联动。
 
----
-
 ## 显卡偏好（可选）
 
 浏览器没有切换 GPU 的接口，得装一次本地辅助程序：
@@ -105,34 +93,28 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 它会写 `HKCU\Software\Microsoft\DirectX\UserGpuPreferences`，卸载跑 `uninstall.ps1`。
 
----
-
 ## 代码结构
 
-```text
-we-newtab/
-  manifest.json     MV3 清单
-  newtab.html/.css  页面 + 设置面板
-  core.js           基础层：DOM、IndexedDB、设置、文件系统访问
-  library.js        壁纸库：目录检测、扫描、列表渲染、变更监听
-  playback.js       播放层：场景/视频/图片、属性下发、效果、轮换、音频
-  panel.js          设置面板：选项卡、控件、显卡、空状态
-  app.js            启动流程
-  props.js          壁纸属性引擎
-  render.html/.js   沙箱渲染页（WebWallGL 宿主）
-  vendor/           WebWallGL 运行时
-  native/           显卡偏好 Native Messaging 宿主
-  test/smoke.mjs    属性引擎离线用例（23 项）
-  docs/             展示页与截图
 ```
-
----
+we-newtab/
+  manifest.json       MV3 清单
+  newtab.html/.css    页面 + 设置面板
+  core.js             基础层：DOM、IndexedDB、设置、文件系统访问
+  library.js          壁纸库：目录检测、扫描、列表渲染、变更监听
+  playback.js         播放层：场景/视频/图片、属性下发、效果、轮换、音频
+  panel.js            设置面板：选项卡、控件、显卡、空状态
+  app.js              启动流程
+  props.js            壁纸属性引擎
+  render.html/.js     沙箱渲染页（WebWallGL 宿主）
+  vendor/             WebWallGL 运行时
+  native/             显卡偏好 Native Messaging 宿主
+  test/smoke.mjs      属性引擎离线用例（23 项）
+  docs/               展示页与截图
+```
 
 ## 做不到的
 
 - 创意工坊的订阅和下载得在 Steam 客户端里做，浏览器端做不了
-
----
 
 ## 许可
 
