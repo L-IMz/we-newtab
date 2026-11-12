@@ -1,6 +1,15 @@
 # Wallpaper Engine New Tab WE壁纸标签页
 
 ![新标签页](docs/img/hero.png)
+观前须知:本项目完全为Vibe Coding，全程使用AI，遇到问题直接自己拿AI改就行了，本质是我自用的小破玩意
+本扩展刚需:
+webwallgl https://github.com/oneincase/webwallgl
+media-bridge https://github.com/oneincase/media-bridge
+
+作者主页
+B站 【在下练习两年半的坤的个人空间-哔哩哔哩】 https://b23.tv/1AaM2Iq
+github https://github.com/oneincase
+可以的话给作者点个关注点个星标
 
 ## 它能做什么
 
@@ -13,7 +22,8 @@
 ![设置面板](docs/img/settings.png)
 
 ## 装上试试
-
+安装前需要先安装上webwallgl和media-bridge
+具体安装方法自行前往作者主页查看
 1. `edge://extensions`（或 `chrome://extensions`）→ 打开「开发人员模式」
 2. 「加载解压缩的扩展」→ 选这个仓库里的 `we-newtab` 目录
 3. 新标签页右下角齿轮 →「添加目录…」→ 选壁纸目录
