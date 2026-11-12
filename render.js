@@ -82,6 +82,32 @@ const engine = window.WebWallGL;
 let instance = null;
 // 宿主推来的实时频谱；为空时引擎用自己的模拟源
 let audioBins = null;
+
+/* 音频快照：宿主送来的频谱只有 10–16Hz，直接喂给引擎会有明显阶梯感。
+   这里按帧做指数平滑（起得快、落得慢），引擎每帧读到的都是连续值。 */
+const AUDIO_BANDS = 64;
+const audioSmoothL = new Float32Array(AUDIO_BANDS);
+const audioSmoothR = new Float32Array(AUDIO_BANDS);
+const audioSilent = new Float32Array(AUDIO_BANDS);
+let audioSmoothAt = 0;
+
+// 取当前平滑后的频谱（左右声道各自独立，指数起落）
+function audioSnapshot() {
+  const now = performance.now();
+  const dt = Math.min(0.1, Math.max(0.001, (now - audioSmoothAt) / 1000));
+  audioSmoothAt = now;
+  const attack = 1 - Math.exp(-dt * 28);
+  const release = 1 - Math.exp(-dt * 9);
+  const left = audioBins ? audioBins.left : audioSilent;
+  const right = audioBins ? audioBins.right : audioSilent;
+  for (let i = 0; i < AUDIO_BANDS; i++) {
+    const goalL = Number(left[i]) || 0;
+    audioSmoothL[i] += (goalL - audioSmoothL[i]) * (goalL > audioSmoothL[i] ? attack : release);
+    const goalR = Number(right[i]) || 0;
+    audioSmoothR[i] += (goalR - audioSmoothR[i]) * (goalR > audioSmoothR[i] ? attack : release);
+  }
+  return { left: audioSmoothL, right: audioSmoothR };
+}
 let mediaSnap = null;
 // 引擎判断媒体源读的是 snapshot 属性本身（snapshot.hasMedia），所以用 getter 暴露最新快照
 const mediaSource = {
@@ -233,7 +259,7 @@ async function mountScene(msg) {
       quality: opts.quality || {},
       scripts: opts.scripts !== false,
       properties: msg.props || {},
-      audio: { snapshot: () => audioBins || { left: new Array(64).fill(0), right: new Array(64).fill(0) } },
+      audio: { snapshot: audioSnapshot },
       media: mediaSource,
       autoplay: true,
       volume: Math.max(0, Math.min(1, Number(opts.volume) || 0)),

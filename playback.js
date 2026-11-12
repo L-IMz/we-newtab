@@ -188,10 +188,25 @@ async function playMedia(wall, kind) {
   state.mediaUrl = url;
 
   if (kind === "video") {
+    const level = Math.max(0, Math.min(100, Number(state.settings.volume) || 0)) / 100;
     vid.src = url;
     vid.playbackRate = Number(state.settings.rate) || 1;
+    vid.volume = level;
+    vid.muted = level <= 0;
     vid.classList.add("on");
-    vid.play().catch(() => notice("视频自动播放被拦截，请点击页面"));
+    vid.play().catch(() => {
+      // 浏览器拦了带声音的自动播放：先静音起播，用户第一次点击后恢复音量
+      vid.muted = true;
+      vid.play().catch(() => notice("视频自动播放被拦截，请点击页面"));
+      window.addEventListener(
+        "pointerdown",
+        () => {
+          vid.muted = level <= 0;
+          vid.volume = level;
+        },
+        { once: true }
+      );
+    });
   } else {
     img.src = url;
     img.classList.add("on");
@@ -326,6 +341,30 @@ window.addEventListener("message", (event) => {
 });
 
 
+/* ---------------- 失焦降帧 ---------------- */
+
+let blurFpsTimer = 0;
+let windowFocused = document.hasFocus();
+
+// 窗口失去焦点时（切到别的程序）把场景压到 10 FPS，回到前台恢复设置值
+function scheduleBlurFps() {
+  clearTimeout(blurFpsTimer);
+  blurFpsTimer = setTimeout(() => {
+    if (!state.sceneReady || state.current?.type !== "scene") return;
+    const fps = windowFocused ? Number(state.settings.fps) || 30 : 10;
+    sceneFrame.contentWindow?.postMessage({ t: "update", opts: { fps } }, "*");
+  }, 800);
+}
+
+window.addEventListener("blur", () => {
+  windowFocused = false;
+  scheduleBlurFps();
+});
+window.addEventListener("focus", () => {
+  windowFocused = true;
+  scheduleBlurFps();
+});
+
 /* ---------------- 亮度 / 音量 / 轮换 / 音频 ---------------- */
 
 // 应用亮度遮罩
@@ -336,10 +375,16 @@ function applyBrightness() {
   $("stage").style.filter = "";
 }
 
-// 应用场景音量
+// 应用音量：场景走沙箱，视频直接改 <video>
 function applyVolume() {
   const value = Math.max(0, Math.min(100, Number(state.settings.volume) || 0));
-  sceneFrame.contentWindow?.postMessage({ t: "volume", value: value / 100 }, "*");
+  const level = value / 100;
+  sceneFrame.contentWindow?.postMessage({ t: "volume", value: level }, "*");
+  // 视频壁纸用的是 <video>，音量与静音状态必须同步过去
+  if (vid.src) {
+    vid.volume = level;
+    vid.muted = value <= 0;
+  }
 }
 
 /* 自动轮换：按间隔切到列表里的下一张（可选随机） */
@@ -371,7 +416,7 @@ function scheduleRotation() {
 }
 
 /* 音频响应：浏览器拿不到系统声音，只能用麦克风近似（默认关闭） */
-const mic = { ctx: null, stream: null, analyser: null, timer: 0, data: null };
+const mic = { ctx: null, stream: null, analyser: null, timer: 0, data: null, bins: new Array(64).fill(0) };
 
 // 把麦克风频谱发给沙箱
 function pushAudio() {
@@ -379,7 +424,7 @@ function pushAudio() {
   if (!frame || !mic.analyser) return;
   const buffer = mic.data || (mic.data = new Uint8Array(mic.analyser.frequencyBinCount));
   mic.analyser.getByteFrequencyData(buffer);
-  const bins = new Array(64);
+  const bins = mic.bins;
   const step = Math.max(1, Math.floor(buffer.length / 64));
   for (let i = 0; i < 64; i++) bins[i] = buffer[i * step] / 255;
   frame.contentWindow?.postMessage({ t: "audio", left: bins, right: bins }, "*");
@@ -397,7 +442,13 @@ async function startMic() {
     analyser.smoothingTimeConstant = 0.75;
     source.connect(analyser);
     Object.assign(mic, { ctx, stream, analyser });
-    mic.timer = setInterval(pushAudio, 60);
+    // 用 rAF 跟随刷新率采样，比固定 60ms 更贴合画面节拍
+    const loop = () => {
+      if (!mic.timer) return;
+      pushAudio();
+      mic.timer = requestAnimationFrame(loop);
+    };
+    mic.timer = requestAnimationFrame(loop);
     notice("已启用麦克风频谱（仅本机处理）");
     return true;
   } catch (error) {
@@ -408,7 +459,7 @@ async function startMic() {
 
 // 停止麦克风
 function stopMic() {
-  clearInterval(mic.timer);
+  cancelAnimationFrame(mic.timer);
   mic.timer = 0;
   mic.stream?.getTracks().forEach((track) => track.stop());
   mic.ctx?.close().catch(() => {});
@@ -487,7 +538,7 @@ async function pollMedia() {
   }
 }
 
-// media-bridge 的 SSE：/v1/events?events=spectrum&spectrumMs=100
+// media-bridge 的 SSE：/v1/events?events=spectrum&spectrumMs=50
 // 帧结构 { event:"spectrum", frame:{ bands:[64], rms, peak } }
 async function startBridge() {
   stopBridge();
@@ -506,7 +557,7 @@ async function startBridge() {
   pollMedia();
   bridge.lastPoll = 0;
 
-  const source = new EventSource(`${base}/v1/events?events=spectrum&spectrumMs=100`);
+  const source = new EventSource(`${base}/v1/events?events=spectrum&spectrumMs=50`);
   bridge.source = source;
   source.addEventListener("spectrum", (event) => {
     try {
