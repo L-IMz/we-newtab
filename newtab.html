@@ -19,6 +19,7 @@
   <div id="date"></div>
 </main>
 
+<div id="hitokoto" hidden></div>
 <div id="status" hidden></div>
 
 <button id="gear" title="设置" aria-label="设置">
@@ -56,6 +57,63 @@
       <h2>壁纸选项 <button id="propsReset" class="link">重置</button></h2>
       <label class="check"><input type="checkbox" id="monet"> 从壁纸取色（莫奈）</label>
       <div id="props"></div>
+    </section>
+
+    <section>
+      <h2>时间</h2>
+      <label class="check"><input type="checkbox" id="clockShow"> 在壁纸上显示时间</label>
+      <label>字号
+        <input id="clockSize" type="range" min="32" max="240" step="1">
+      </label>
+      <label>粗细
+        <input id="clockWeight" type="range" min="100" max="900" step="100">
+      </label>
+      <label>字体
+        <select id="clockFont">
+          <option value="system">系统默认</option>
+          <option value="sans">无衬线</option>
+          <option value="serif">衬线</option>
+          <option value="mono">等宽</option>
+          <option value="custom">自定义（导入的字体）</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="clockImport">导入字体文件…</button>
+        <button id="clockClear" class="link">恢复系统字体</button>
+      </div>
+      <input id="clockFile" type="file" accept=".ttf,.otf,.woff,.woff2" hidden>
+      <p class="hint" id="clockFontState">支持 ttf / otf / woff / woff2；字体只存在本机 IndexedDB</p>
+      <label>水平位置
+        <span class="slider-field"><input id="clockX" type="range" min="0" max="100" step="0.5"><span id="clockXValue" class="unit">50%</span></span>
+      </label>
+      <label>垂直位置
+        <span class="slider-field"><input id="clockY" type="range" min="0" max="100" step="0.5"><span id="clockYValue" class="unit">42%</span></span>
+      </label>
+      <p class="hint">X / Y 都按视口百分比算，50% / 42% 是水平居中偏上</p>
+    </section>
+
+    <section>
+      <h2>一言</h2>
+      <label class="check"><input type="checkbox" id="hitokotoShow"> 在左下角显示一言</label>
+      <label>字号
+        <input id="hitokotoSize" type="range" min="10" max="32" step="1">
+      </label>
+      <label>字体
+        <select id="hitokotoFont">
+          <option value="system">系统默认</option>
+          <option value="sans">无衬线</option>
+          <option value="serif">衬线</option>
+          <option value="mono">等宽</option>
+          <option value="custom">自定义（导入的字体）</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="hitokotoImport">导入字体文件…</button>
+        <button id="hitokotoClear" class="link">恢复系统字体</button>
+        <button id="hitokotoNext" class="link">换一句</button>
+      </div>
+      <input id="hitokotoFile" type="file" accept=".ttf,.otf,.woff,.woff2" hidden>
+      <p class="hint" id="hitokotoState">支持 ttf / otf / woff / woff2；字体只存在本机 IndexedDB</p>
     </section>
 
     <section>
@@ -132,6 +190,9 @@
         </select>
       </label>
       <label>桥接端口<input id="bridgePort" type="number" min="1024" max="65535" step="1" value="8765"></label>
+      <div class="row"><button id="bridgeStart">启动 media-bridge</button></div>
+      <label class="check"><input type="checkbox" id="bridgeAuto"> 开机自动启动</label>
+      <p class="hint" id="bridgeState">需要本机运行 media-bridge。可以点上面的按钮一键启动，或手动执行：<code>&amp; "$env:USERPROFILE\Downloads\media-bridge-win32-x64.exe" serve --http</code>。用文件名直接调用会提示「无法识别为 cmdlet」，要带完整路径。</p>
       <label class="check"><input type="checkbox" id="rotate"> 自动轮换壁纸</label>
       <label>轮换间隔
         <select id="rotateEvery">
@@ -169,7 +230,11 @@
 <script src="props.js"></script>
 <script src="library.js"></script>
 <script src="theme.js"></script>
+<script src="fonts.js"></script>
+<script src="hitokoto.js"></script>
+<script src="clock.js"></script>
 <script src="playback.js"></script>
+<script src="native.js"></script>
 <script src="panel.js"></script>
 <script src="app.js"></script>
 </body>

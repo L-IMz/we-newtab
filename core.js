@@ -1,10 +1,8 @@
 "use strict";
 
-/* 基础层：DOM 快捷方式、IndexedDB、设置、文件系统访问 */
+/* 基础层：DOM 引用、默认设置与运行状态、IndexedDB、设置读写、目录授权。 */
 
-"use strict";
-
-/* WE 新标签页 —— 新标签页外壳：目录授权、壁纸库、播放调度、网页壁纸打包、社区浏览 */
+/* ---------------- DOM 引用 ---------------- */
 
 const $ = (id) => document.getElementById(id);
 const vid = $("vid");
@@ -14,6 +12,8 @@ vid.disablePictureInPicture = true;
 vid.disableRemotePlayback = true;
 vid.removeAttribute("controls");
 const sceneFrame = $("scene");
+
+/* ---------------- 默认设置 ---------------- */
 
 const DEFAULTS = {
   fps: 30,
@@ -26,6 +26,16 @@ const DEFAULTS = {
   scripts: true,
   parallax: true,
   monet: true,
+  clockShow: true,
+  clockSize: 112,
+  clockWeight: 300,
+  clockFont: "system",
+  clockX: 50,
+  clockY: 42,
+  hitokotoShow: true,
+  hitokotoSize: 14,
+  hitokotoFont: "system",
+  hitokotoCustomName: "",
   brightness: 100,
   volume: 0,
   audioSource: "off",
@@ -34,6 +44,8 @@ const DEFAULTS = {
   rotateEvery: 5,
   rotateRandom: false,
 };
+
+/* ---------------- 运行状态 ---------------- */
 
 const state = {
   settings: { ...DEFAULTS },
@@ -56,6 +68,7 @@ const TYPE_LABEL = { scene: "场景", video: "视频", web: "网页", image: "�
 
 /* ---------------- 存储 ---------------- */
 
+// 打开或创建本地数据库（只有一个 kv 存储）
 function idb() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("we-newtab", 1);
@@ -65,6 +78,7 @@ function idb() {
   });
 }
 
+// 读一个键
 async function kvGet(key) {
   const db = await idb();
   return new Promise((resolve, reject) => {
@@ -74,6 +88,7 @@ async function kvGet(key) {
   });
 }
 
+// 写一个键
 async function kvSet(key, value) {
   const db = await idb();
   return new Promise((resolve, reject) => {
@@ -83,33 +98,39 @@ async function kvSet(key, value) {
   });
 }
 
+// 载入设置并与默认值合并
 async function loadSettings() {
   const got = await chrome.storage.local.get("settings");
   state.settings = { ...DEFAULTS, ...(got.settings || {}) };
 }
 
+// 保存设置到 chrome.storage
 function saveSettings() {
   chrome.storage.local.set({ settings: state.settings });
 }
 
 /* ---------------- 目录授权 ---------------- */
 
+// 查询目录句柄的读取权限
 async function permissionOf(handle) {
   const q = await handle.queryPermission({ mode: "read" });
   return q;
 }
 
+// 必要时弹出目录授权请求
 async function ensurePermission(handle) {
   if ((await permissionOf(handle)) === "granted") return true;
   return (await handle.requestPermission({ mode: "read" })) === "granted";
 }
 
+// 按路径逐级取子目录句柄
 async function dirByPath(root, parts) {
   let cur = root;
   for (const part of parts) cur = await cur.getDirectoryHandle(part);
   return cur;
 }
 
+// 按相对路径取文件句柄与内容
 async function fileInfo(root, path) {
   const parts = path.split("/").filter(Boolean);
   const name = parts.pop();

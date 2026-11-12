@@ -5,6 +5,7 @@
 
 const PROP_TYPES = new Set(["slider", "color", "bool", "combo", "textinput", "text", "group", "file"]);
 
+// 把 WE 的富文本标记压成纯文本
 function plainText(html) {
   return String(html || "")
     .replace(/<br\s*\/?>/gi, " ")
@@ -39,6 +40,7 @@ function labelOf(def) {
 
 /* --- condition 表达式：支持 && || == != 括号、数字/字符串/布尔、`Name.value` --- */
 
+// 宽松比较（数字或字符串）
 function compare(a, b, op) {
   const numA = typeof a === "boolean" ? Number(a) : Number(a);
   const numB = typeof b === "boolean" ? Number(b) : Number(b);
@@ -47,6 +49,7 @@ function compare(a, b, op) {
   return op === "==" ? equal : !equal;
 }
 
+// 求值 condition 表达式
 function evalCondition(expression, values) {
   const src = String(expression || "").trim();
   if (!src) return true;
@@ -145,6 +148,7 @@ function evalCondition(expression, values) {
 
 /* --- 取值与控件 --- */
 
+// 从 project.json 提取可渲染的属性定义
 function propDefs(wall) {
   const props = wall?.project?.general?.properties || {};
   return Object.entries(props)
@@ -153,6 +157,7 @@ function propDefs(wall) {
     .sort((a, b) => Number(a.def.order ?? 0) - Number(b.def.order ?? 0));
 }
 
+// 按定义生成默认值
 function defaultValues(defs) {
   const values = {};
   for (const { name, def } of defs) {
@@ -167,6 +172,7 @@ function defaultValues(defs) {
   return values;
 }
 
+// “r g b” → #rrggbb
 function colorStringToHex(value) {
   const parts = String(value || "1 1 1").trim().split(/\s+/).map(Number);
   const rgb = parts.length === 3 ? parts : [1, 1, 1];
@@ -174,12 +180,14 @@ function colorStringToHex(value) {
   return `#${rgb.map((v) => toByte(v).toString(16).padStart(2, "0")).join("")}`;
 }
 
+// #rrggbb → “r g b”
 function hexToColorString(hex) {
   const clean = hex.replace("#", "");
   const rgb = [0, 2, 4].map((offset) => parseInt(clean.slice(offset, offset + 2), 16) / 255);
   return rgb.map((v) => Math.round(v * 1000) / 1000).join(" ");
 }
 
+// 任意颜色表示 → #rrggbb
 function colorFromHexOrRgb(value) {
   const text = String(value || "").trim();
   if (/^#[0-9a-f]{6}$/i.test(text)) return text;
@@ -203,6 +211,7 @@ const el = (tag, className) => {
 /* 渲染控件列表。onChange(name, value) 由调用方负责持久化与下发 */
 function renderProperties(container, defs, values, onChange) {
   container.textContent = "";
+  const fragment = document.createDocumentFragment();
   const rows = [];
 
   for (const { name, def } of defs) {
@@ -214,7 +223,7 @@ function renderProperties(container, defs, values, onChange) {
       const head = el("h4", "prop-group-head");
       head.textContent = labelOf(def) || name;
       row.appendChild(head);
-      container.appendChild(row);
+      fragment.appendChild(row);
       rows.push({ row, def, name });
       continue;
     }
@@ -225,7 +234,7 @@ function renderProperties(container, defs, values, onChange) {
       const node = el(title ? "h3" : "p", title ? "prop-head" : "prop-note");
       node.textContent = plainText(def.text);
       row.appendChild(node);
-      container.appendChild(row);
+      fragment.appendChild(row);
       rows.push({ row, def, name });
       continue;
     }
@@ -300,20 +309,35 @@ function renderProperties(container, defs, values, onChange) {
     }
 
     row.appendChild(control);
-    container.appendChild(row);
+    fragment.appendChild(row);
     rows.push({ row, def, name });
   }
+
+  container.appendChild(fragment);
+
+  // 同一帧内的多次刷新合并成一次，拖滑块时不再逐事件布局
+  let refreshQueued = false;
+  let pendingValues = null;
+  const applyRefresh = (values) => {
+    // 分组（group）属性没有值，条件里引用它时按“始终成立”处理
+    const evalValues = { ...values };
+    for (const { name, def } of defs) if (def.type === "group") evalValues[name] = true;
+    for (const { row, def } of rows) {
+      if (!def.condition) continue;
+      row.hidden = !evalCondition(def.condition, evalValues);
+    }
+  };
 
   return {
     // 依据当前值刷新 condition 可见性
     refresh(nextValues) {
-      // 分组（group）属性没有值，条件里引用它时按“始终成立”处理
-      const evalValues = { ...nextValues };
-      for (const { name, def } of defs) if (def.type === "group") evalValues[name] = true;
-      for (const { row, def } of rows) {
-        if (!def.condition) continue;
-        row.hidden = !evalCondition(def.condition, evalValues);
-      }
+      pendingValues = nextValues;
+      if (refreshQueued) return;
+      refreshQueued = true;
+      requestAnimationFrame(() => {
+        refreshQueued = false;
+        applyRefresh(pendingValues);
+      });
     },
   };
 }

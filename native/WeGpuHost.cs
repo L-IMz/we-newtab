@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Diagnostics;
 using System.Web.Script.Serialization;
 using Microsoft.Win32;
 
@@ -68,6 +69,67 @@ internal static class Program
             if (pref <= 0) key.DeleteValue(exePath, false);
             else key.SetValue(exePath, "GpuPreference=" + pref + ";", RegistryValueKind.String);
         }
+    }
+
+
+    // ---------- media-bridge 服务 ----------
+
+    private static readonly string[] BridgeCandidates =
+    {
+        @"%USERPROFILE%\Downloads\media-bridge-win32-x64.exe",
+        @"%USERPROFILE%\Desktop\media-bridge-win32-x64.exe",
+        @"%LOCALAPPDATA%\media-bridge\media-bridge-win32-x64.exe",
+        @"%ProgramFiles%\media-bridge\media-bridge-win32-x64.exe",
+    };
+
+    private static string FindBridge(string preferred)
+    {
+        if (!string.IsNullOrWhiteSpace(preferred))
+        {
+            var wanted = Expand(preferred.Trim().Trim('"'));
+            if (File.Exists(wanted)) return wanted;
+        }
+        foreach (var raw in BridgeCandidates)
+        {
+            var path = Expand(raw);
+            if (File.Exists(path)) return path;
+        }
+        return null;
+    }
+
+    private static bool BridgeRunning()
+    {
+        return Process.GetProcessesByName("media-bridge-win32-x64").Length > 0;
+    }
+
+    private static string AutostartFile()
+    {
+        var startup = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+        return Path.Combine(startup, "we-newtab-media-bridge.vbs");
+    }
+
+    private static int StartBridgeProcess(string path, int port)
+    {
+        var info = new ProcessStartInfo(path, "serve --http 127.0.0.1:" + port)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(path) ?? Environment.CurrentDirectory,
+        };
+        var process = Process.Start(info);
+        return process == null ? 0 : process.Id;
+    }
+
+    private static void WriteAutostart(bool enabled, string path, int port)
+    {
+        var file = AutostartFile();
+        if (!enabled)
+        {
+            if (File.Exists(file)) File.Delete(file);
+            return;
+        }
+        var script = "CreateObject(\"WScript.Shell\").Run \"\"\"" + path + "\"\" serve --http 127.0.0.1:" + port + "\", 0, False";
+        File.WriteAllText(file, script, new UTF8Encoding(false));
     }
 
     private static string ReadMessage()
@@ -162,6 +224,69 @@ internal static class Program
                     { "restart", changed.Count > 0 },
                 };
                 WriteMessage(serializer.Serialize(payload));
+                continue;
+            }
+
+
+            if (cmd == "bridge-status")
+            {
+                var bridgePath = FindBridge(request.ContainsKey("path") ? Convert.ToString(request["path"]) : "");
+                var info = new Dictionary<string, object>
+                {
+                    { "ok", true },
+                    { "running", BridgeRunning() },
+                    { "autostart", File.Exists(AutostartFile()) },
+                    { "path", bridgePath ?? "" },
+                };
+                WriteMessage(serializer.Serialize(info));
+                continue;
+            }
+
+            if (cmd == "bridge-start")
+            {
+                var port = request.ContainsKey("port") ? Convert.ToInt32(request["port"]) : 8765;
+                var bridgePath = FindBridge(request.ContainsKey("path") ? Convert.ToString(request["path"]) : "");
+                if (bridgePath == null)
+                {
+                    WriteMessage("{\"ok\":false,\"error\":\"找不到 media-bridge-win32-x64.exe（默认找 Downloads 目录）\"}");
+                    continue;
+                }
+                if (BridgeRunning())
+                {
+                    WriteMessage("{\"ok\":true,\"already\":true}");
+                    continue;
+                }
+                try
+                {
+                    var pid = StartBridgeProcess(bridgePath, port);
+                    WriteMessage(serializer.Serialize(new Dictionary<string, object> { { "ok", true }, { "pid", pid } }));
+                }
+                catch (Exception error)
+                {
+                    WriteMessage(serializer.Serialize(new Dictionary<string, object> { { "ok", false }, { "error", error.Message } }));
+                }
+                continue;
+            }
+
+            if (cmd == "bridge-autostart")
+            {
+                var enabled = request.ContainsKey("enabled") && Convert.ToBoolean(request["enabled"]);
+                var port = request.ContainsKey("port") ? Convert.ToInt32(request["port"]) : 8765;
+                var bridgePath = FindBridge(request.ContainsKey("path") ? Convert.ToString(request["path"]) : "");
+                if (bridgePath == null)
+                {
+                    WriteMessage("{\"ok\":false,\"error\":\"找不到 media-bridge-win32-x64.exe\"}");
+                    continue;
+                }
+                try
+                {
+                    WriteAutostart(enabled, bridgePath, port);
+                    WriteMessage(serializer.Serialize(new Dictionary<string, object> { { "ok", true }, { "autostart", enabled } }));
+                }
+                catch (Exception error)
+                {
+                    WriteMessage(serializer.Serialize(new Dictionary<string, object> { { "ok", false }, { "error", error.Message } }));
+                }
                 continue;
             }
 

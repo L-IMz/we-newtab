@@ -82,9 +82,16 @@ const engine = window.WebWallGL;
 let instance = null;
 // 宿主推来的实时频谱；为空时引擎用自己的模拟源
 let audioBins = null;
+let mediaSnap = null;
+// 引擎判断媒体源读的是 snapshot 属性本身（snapshot.hasMedia），所以用 getter 暴露最新快照
+const mediaSource = {
+  get snapshot() { return mediaSnap; },
+  update() { return mediaSnap; },
+};
 const pending = new Map();
 let seq = 0;
 
+// 请外壳读取散装工程里的文件
 function askRead(path) {
   const id = ++seq;
   return new Promise((resolve) => {
@@ -93,6 +100,7 @@ function askRead(path) {
   });
 }
 
+// 销毁引擎实例并清理计时器
 function destroy() {
   if (instance) {
     try {
@@ -105,6 +113,7 @@ function destroy() {
   stage.textContent = "";
 }
 
+// 把属性下发给引擎（含图层绑定与可见性）
 function applyProps(values) {
   if (!instance || !values) return;
   try {
@@ -117,6 +126,7 @@ function applyProps(values) {
   }
 }
 
+// 依据壁纸布局构造 load() 的入参
 function buildSource(msg) {
   return {
     key: msg.key,
@@ -152,6 +162,7 @@ const PARALLAX_FALLBACK_DEPTH = 1;
 const parallaxOriginal = new WeakMap();
 let parallaxEnabled = true;
 
+// 从场景属性判断作者是否启用视差
 function sceneWantsParallax() {
   const raw = window.__scene?.general?.cameraparallax;
   return raw === true || (raw && typeof raw === "object" && raw.value === true);
@@ -169,6 +180,7 @@ function setLayerDepth(layer, depth) {
   if ("parallaxDepthOwn" in layer) layer.parallaxDepthOwn = depth;
 }
 
+// 恢复图层原始视差深度
 function restoreLayerDepth(layer) {
   if (!parallaxOriginal.has(layer)) return;
   const original = parallaxOriginal.get(layer);
@@ -180,6 +192,7 @@ function restoreLayerDepth(layer) {
   parallaxOriginal.delete(layer);
 }
 
+// 为缺少深度的图层补默认值
 function applyCameraParallax() {
   const scene = window.__scene;
   if (!scene || !Array.isArray(scene.layers)) return;
@@ -202,6 +215,7 @@ function applyCameraParallax() {
 
   if (patched) send({ t: "diag", level: "info", msg: `camera parallax：为 ${patched} 个图层补充默认视差深度` });
 }
+// 创建引擎实例并加载壁纸
 async function mountScene(msg) {
   parallaxEnabled = msg.opts?.parallax !== false;
   if (!engine) {
@@ -220,9 +234,10 @@ async function mountScene(msg) {
       scripts: opts.scripts !== false,
       properties: msg.props || {},
       audio: { snapshot: () => audioBins || { left: new Array(64).fill(0), right: new Array(64).fill(0) } },
+      media: mediaSource,
       autoplay: true,
       volume: Math.max(0, Math.min(1, Number(opts.volume) || 0)),
-      autoQuality: false,
+      autoQuality: true,
       mountTimeoutMs: 30000,
     });
   } catch (error) {
@@ -262,6 +277,7 @@ async function mountScene(msg) {
   }
 }
 
+// 统一的错误文本
 function errorText(error) {
   return `${error?.name || "Error"}: ${error?.message || error}`;
 }
@@ -304,6 +320,12 @@ window.addEventListener("message", (event) => {
     try { instance.setVolume(Math.max(0, Math.min(1, Number(data.value) || 0))); } catch { /* 忽略 */ }
   }
 
+  // 媒体信息：宿主从 media-bridge 拿到的「正在播放」
+  if (data.t === "media") {
+    mediaSnap = data.off ? null : data.snapshot || null;
+    return;
+  }
+
   // 音频响应：宿主推来的麦克风频谱（可选）
   if (data.t === "audio") {
     if (data.off) audioBins = null;
@@ -317,6 +339,17 @@ window.addEventListener("message", (event) => {
 
 
   if (data.t === "props" && data.props) applyProps(data.props);
+});
+
+// 标签页不可见时暂停渲染，回来再继续（后台不再空转 GPU）
+document.addEventListener("visibilitychange", () => {
+  if (!instance) return;
+  try {
+    if (document.hidden) instance.pause();
+    else instance.resume();
+  } catch {
+    /* 引擎可能已销毁 */
+  }
 });
 
 setInterval(() => {

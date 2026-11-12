@@ -1,15 +1,19 @@
 "use strict";
 
-/* 入口：启动流程、时钟、空闲状态 */
+/* 入口：按顺序启动各项能力，最后恢复上次的壁纸。 */
 
 /* ---------------- 启动 ---------------- */
 
+// 启动：设置 → 面板 → 目录 → 恢复上次壁纸
 async function main() {
   purgeLegacyCache().catch(() => {});
   startClock();
   startIdle();
   bindPanel();
   await loadSettings();
+  applyHitokotoStyle();
+  loadStoredFont("hitokoto").then(() => renderHitokoto());
+  loadStoredFont("clock").then(() => applyClock());
   applyBrightness();
   bindSettings();
   watchPerformance();
@@ -23,7 +27,7 @@ async function main() {
   startWatcher();
 
   if (!roots.length) {
-    status("先添加 Wallpaper Engine 壁纸目录");
+    notice("先添加 Wallpaper Engine 壁纸目录");
     return;
   }
 
@@ -31,7 +35,7 @@ async function main() {
 
   const last = (await chrome.storage.local.get("lastWall")).lastWall;
   const wall = last && state.walls.find((item) => item.id === last);
-  if (wall) play(wall).catch(() => status("上次的壁纸已不可用，请重新选择"));
+  if (wall) play(wall).catch(() => notice("上次的壁纸已不可用，请重新选择"));
 }
 
 main().catch(reportError);

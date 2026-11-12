@@ -1,6 +1,7 @@
 "use strict";
 
-/* 设置面板：选项卡、控件绑定、显卡偏好、空状态 */
+/* 设置面板：开关动画、底部提示、目录列表与所有设置项绑定。
+   原生能力（显卡/桥服务）在 native.js，时钟在 clock.js。 */
 
 /* ---------------- 面板开关 ---------------- */
 
@@ -11,6 +12,7 @@ function setPanelOpen(open) {
   panel.classList.toggle("open", willOpen);
   if (!willOpen) return;
   refreshGpu();
+  syncBridge();
   // 面板刚展开时量不到行高，等一帧再对齐滚动区高度
   requestAnimationFrame(() => {
     alignAllWallLists();
@@ -18,153 +20,29 @@ function setPanelOpen(open) {
   });
 }
 
-/* ---------------- 显卡偏好 ---------------- */
-
-const GPU_HOST = "com.we.newtab.gpu";
-
-function rendererName() {
-  try {
-    const canvas = document.createElement("canvas");
-    const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
-    if (!gl) return "不可用";
-    const ext = gl.getExtension("WEBGL_debug_renderer_info");
-    const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "未知";
-    gl.getExtension("WEBGL_lose_context")?.loseContext();
-    return name;
-  } catch {
-    return "未知";
-  }
-}
-
-// 与本地宿主通信：浏览器不提供修改显卡偏好的 API，只能走原生消息
-function nativeRequest(message) {
-  return new Promise((resolve, reject) => {
-    let port;
-    try {
-      port = chrome.runtime.connectNative(GPU_HOST);
-    } catch (error) {
-      reject(new Error("未安装辅助程序"));
-      return;
-    }
-    let settled = false;
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        port.disconnect();
-      } catch {
-        /* 已断开 */
-      }
-      fn(value);
-    };
-    const timer = setTimeout(() => finish(reject, new Error("辅助程序无响应")), 5000);
-    port.onMessage.addListener((res) => finish(resolve, res));
-    port.onDisconnect.addListener(() => {
-      const err = chrome.runtime.lastError;
-      finish(reject, new Error(err ? err.message : "辅助程序已退出"));
-    });
-    try {
-      port.postMessage(message);
-    } catch (error) {
-      finish(reject, error);
-    }
-  });
-}
-
-const GPU_OPTIONS = [
-  [2, "gpuHigh", "独显"],
-  [1, "gpuLow", "核显"],
-  [0, "gpuAuto", "自动"],
-];
-
-// 让按钮状态与系统里实际写入的偏好一致（切换后立即回填，重启后也一致）
-function applyGpuSelection(pref) {
-  for (const [value, id] of GPU_OPTIONS) {
-    const button = $(id);
-    if (!button) continue;
-    const active = Number(value) === Number(pref);
-    button.classList.toggle("selected", active);
-    button.setAttribute("aria-pressed", String(active));
-  }
-}
-
-async function refreshGpu(keepMessage) {
-  $("gpuRenderer").textContent = `当前渲染器：${rendererName()}`;
-  try {
-    const res = await nativeRequest({ cmd: "status" });
-    const browser = (res.browsers || [])[0];
-    const pref = browser ? Number(browser.pref) : 0;
-    state.gpuPref = pref;
-    applyGpuSelection(pref);
-    $("gpuState").textContent = pref === 2 ? "独显" : pref === 1 ? "核显" : "自动";
-    $("gpuInstall").hidden = true;
-    if (!keepMessage) $("gpuMsg").textContent = "";
-  } catch (error) {
-    state.gpuPref = null;
-    applyGpuSelection(-1);
-    $("gpuState").textContent = "未安装";
-    $("gpuInstall").hidden = false;
-    if (!keepMessage) $("gpuMsg").textContent = "";
-  }
-}
-
-async function setGpu(pref) {
-  try {
-    const res = await nativeRequest({ cmd: "set", pref });
-    if (!res.ok) {
-      $("gpuMsg").textContent = res.error || "写入失败";
-      return;
-    }
-    state.gpuPref = pref;
-    applyGpuSelection(pref);
-    $("gpuState").textContent = pref === 2 ? "独显" : pref === 1 ? "核显" : "自动";
-    $("gpuMsg").textContent = "已写入系统设置，完全退出并重新打开浏览器后生效。";
-    status("显卡偏好已更新，重启浏览器后生效");
-  } catch (error) {
-    $("gpuMsg").textContent = `${error.message || error} —— 先安装辅助程序`;
-    $("gpuInstall").hidden = false;
-  }
-}
-
-async function downloadInstaller() {
-  try {
-    for (const name of ["install.ps1", "WeGpuHost.cs"]) {
-      await chrome.downloads.download({
-        url: chrome.runtime.getURL(`native/${name}`),
-        filename: `we-newtab-gpu/${name}`,
-        conflictAction: "overwrite",
-      });
-    }
-    status("已下载到「下载/we-newtab-gpu」：右键 install.ps1 → 使用 PowerShell 运行");
-  } catch (error) {
-    status(`下载失败：${error.message || error}`);
-  }
-}
-
-function bindGpu() {
-  $("gpuHigh").addEventListener("click", () => setGpu(2));
-  $("gpuLow").addEventListener("click", () => setGpu(1));
-  $("gpuAuto").addEventListener("click", () => setGpu(0));
-  $("gpuDownload").addEventListener("click", downloadInstaller);
-  $("gpuRetry").addEventListener("click", () => refreshGpu());
-  refreshGpu();
-}
 /* ---------------- UI ---------------- */
 
 let statusTimer = 0;
+// 底部只在切换壁纸时露一下名字，其它过程信息一律只进控制台
 function status(text) {
   const el = $("status");
   el.textContent = text;
   el.hidden = false;
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => (el.hidden = true), 5200);
+  statusTimer = setTimeout(() => (el.hidden = true), 2000);
 }
 
+// 过程信息只进控制台
+function notice(text) {
+  console.log("[notice]", text);
+}
+
+// 错误只进控制台
 function reportError(error) {
-  status(String(error?.message || error));
+  console.error("[error]", error?.message || error);
 }
 
+// 渲染已授权目录列表
 function renderRoots() {
   const box = $("roots");
   box.textContent = "";
@@ -190,7 +68,7 @@ function renderRoots() {
     grant.textContent = "授权";
     grant.addEventListener("click", async () => {
       const ok = await ensurePermission(handle);
-      status(ok ? `${label || handle.name} 已授权` : `${label || handle.name} 未授权`);
+      notice(ok ? `${label || handle.name} 已授权` : `${label || handle.name} 未授权`);
       await rescan();
     });
     row.appendChild(grant);
@@ -208,13 +86,18 @@ function renderRoots() {
   });
 }
 
+// 绑定所有设置项
 function bindSettings() {
+  applyClock();
+
   const map = {
     fps: "fps", dpr: "dpr", aa: "aa", particles: "particles", post: "post",
     fit: "fit", rate: "rate", scripts: "scripts", audioSource: "audioSource", bridgePort: "bridgePort",
     parallax: "parallax", monet: "monet",
     brightness: "brightness", volume: "volume", rotate: "rotate",
     rotateEvery: "rotateEvery", rotateRandom: "rotateRandom",
+    hitokotoShow: "hitokotoShow", hitokotoSize: "hitokotoSize", hitokotoFont: "hitokotoFont",
+    clockShow: "clockShow", clockSize: "clockSize", clockWeight: "clockWeight", clockFont: "clockFont", clockX: "clockX", clockY: "clockY",
   };
 
   for (const [key, id] of Object.entries(map)) {
@@ -223,7 +106,7 @@ function bindSettings() {
     else el.value = String(state.settings[key]);
     el.addEventListener(el.type === "range" || el.type === "checkbox" ? "input" : "change", async () => {
       state.settings[key] = el.type === "checkbox" ? el.checked : el.value;
-      if (key === "fps" || key === "dpr" || key === "brightness" || key === "volume" || key === "rotateEvery" || key === "bridgePort")
+      if (key === "fps" || key === "dpr" || key === "brightness" || key === "volume" || key === "rotateEvery" || key === "bridgePort" || key === "hitokotoSize" || key === "clockSize" || key === "clockWeight" || key === "clockX" || key === "clockY")
         state.settings[key] = Number(state.settings[key]) || 0;
       if (key === "rate") {
         state.settings.rate = Number(state.settings.rate) || 1;
@@ -244,12 +127,13 @@ function bindSettings() {
         remountScene();
       }
       if (key === "monet") applyMonet();
+      if (key.startsWith("hitokoto")) renderHitokoto();
+      if (key.startsWith("clock")) applyClock();
       if (key === "brightness") applyBrightness();
       if (key === "volume") applyVolume();
       if (key === "rotate" || key === "rotateEvery" || key === "rotateRandom") scheduleRotation();
       if (key === "audioSource" || key === "bridgePort") applyAudioSource();
-      if (key === "dpr")
-        { state.effectiveDpr = null; }
+      if (key === "dpr") state.effectiveDpr = null;
       saveSettings();
       applyLiveSettings();
     });
@@ -257,6 +141,7 @@ function bindSettings() {
 
 }
 
+// 应用填充模式
 function applyFit() {
   const map = { cover: "cover", contain: "contain", stretch: "fill" };
   vid.style.objectFit = map[state.settings.fit] || "cover";
@@ -286,10 +171,11 @@ function watchPerformance() {
 
     state.effectiveDpr = next;
     applyLiveSettings();
-    status(`帧率偏低（${state.fps} FPS），已自动降到 ${next}× 渲染分辨率`);
+    notice(`帧率偏低（${state.fps} FPS），已自动降到 ${next}× 渲染分辨率`);
   }, 2000);
 }
 
+// 把画质类设置热更新到引擎
 function applyLiveSettings() {
   if (!state.sceneReady) return;
   const s = state.settings;
@@ -307,18 +193,28 @@ function applyLiveSettings() {
   );
 }
 
+// 绑定面板上的所有按钮
 function bindPanel() {
   $("gear").addEventListener("click", () => setPanelOpen());
   $("close").addEventListener("click", () => setPanelOpen(false));
   $("rescan").addEventListener("click", () => rescan().catch(reportError));
   $("openWorkshop").addEventListener("click", openSteamWorkshop);
+  $("bridgeStart").addEventListener("click", startBridgeService);
+  $("bridgeAuto").addEventListener("change", toggleBridgeAutostart);
+  $("clockImport").addEventListener("click", () => $("clockFile").click());
+  $("clockFile").addEventListener("change", (event) => importClockFont(event.target.files?.[0]));
+  $("clockClear").addEventListener("click", () => clearClockFont().catch(reportError));
+  $("hitokotoImport").addEventListener("click", () => $("hitokotoFile").click());
+  $("hitokotoFile").addEventListener("change", (event) => importHitokotoFont(event.target.files?.[0]));
+  $("hitokotoClear").addEventListener("click", () => clearHitokotoFont().catch(reportError));
+  $("hitokotoNext").addEventListener("click", () => renderHitokoto(true));
   bindGpu();
 
 
   $("addRoot").addEventListener("click", async () => {
     try {
       const picked = await window.showDirectoryPicker({ mode: "read", id: "we-roots" });
-      if (!(await ensurePermission(picked))) return status("未获得目录读取权限");
+      if (!(await ensurePermission(picked))) return notice("未获得目录读取权限");
 
       // 选中的可能是 Steam 库、WE 安装目录，或壁纸目录本身：先识别真实布局
       const detected = await detectRoots(picked);
@@ -347,30 +243,16 @@ function bindPanel() {
       renderRoots();
       startWatcher();
       await rescan();
-      if (detected.length) status(`已识别并添加 ${added} 个壁纸目录`);
+      if (detected.length) notice(`已识别并添加 ${added} 个壁纸目录`);
     } catch (error) {
       if (error?.name !== "AbortError") reportError(error);
     }
   });
 }
 
-function startClock() {
-  const time = $("time");
-  const date = $("date");
-  const paint = () => {
-    const now = new Date();
-    time.textContent = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    date.textContent = now.toLocaleDateString("zh-CN", {
-      month: "long",
-      day: "numeric",
-      weekday: "long",
-    });
-  };
-  paint();
-  setInterval(paint, 15000);
-}
 
 let idleTimer = 0;
+// 鼠标静止后隐藏界面元素
 function startIdle() {
   const wake = () => {
     document.body.classList.remove("bare");

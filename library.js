@@ -19,12 +19,14 @@ const LAYOUT_HINTS = [
   ["projects"],
 ];
 
+// 目录项转成“小写名 → 句柄”映射，兼容大小写差异
 function lowerMap(entries) {
   const map = new Map();
   for (const entry of entries) map.set(entry.name.toLowerCase(), entry);
   return map;
 }
 
+// 枚举目录项；无权限时返回空数组
 async function entriesOf(dir) {
   const out = [];
   try {
@@ -35,6 +37,7 @@ async function entriesOf(dir) {
   return out;
 }
 
+// 按已知子目录链解析真实路径
 async function resolveChain(dir, parts) {
   let current = dir;
   for (const part of parts) {
@@ -65,14 +68,54 @@ async function detectRoots(handle) {
   return found;
 }
 
+/* 限制并发的小工具：目录多的时候别串行等 */
+async function mapLimit(items, limit, worker) {
+  let index = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      await worker(items[current], current);
+    }
+  });
+  await Promise.all(runners);
+}
+
+/* project.json 解析缓存：文件没变就不重复 parse（按 lastModified + size 判断） */
+let projectCache = null;
+let projectCacheDirty = false;
+
+// 读取 project.json 解析缓存
+async function loadProjectCache() {
+  if (!projectCache) projectCache = (await kvGet("projectCache").catch(() => null)) || {};
+  return projectCache;
+}
+
+// 把解析缓存合并写回 IndexedDB
+function flushProjectCache() {
+  if (!projectCache || !projectCacheDirty) return;
+  projectCacheDirty = false;
+  kvSet("projectCache", projectCache).catch(() => {});
+}
+
+// 递归扫描目录，收集带 project.json 的壁纸
 async function scanDir(dir, depth, root, out) {
   const entries = await entriesOf(dir);
+  const cache = await loadProjectCache();
 
   const project = entries.find((e) => e.kind === "file" && e.name === "project.json");
   if (project) {
     try {
-      const text = await (await project.getFile()).text();
-      const json = JSON.parse(text);
+      const file = await project.getFile();
+      const key = `${root}/${dir.name}`;
+      const hit = cache[key];
+      let json;
+      if (hit && hit.mtime === file.lastModified && hit.size === file.size) {
+        json = hit.project;
+      } else {
+        json = JSON.parse(await file.text());
+        cache[key] = { mtime: file.lastModified, size: file.size, project: json };
+        projectCacheDirty = true;
+      }
       out.push({ dir, name: dir.name, root, project: json });
     } catch {
       /* 损坏的 project.json 直接跳过 */
@@ -80,13 +123,13 @@ async function scanDir(dir, depth, root, out) {
   }
 
   if (depth <= 0) return;
-  for (const entry of entries) {
-    if (entry.kind !== "directory") continue;
-    if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
-    await scanDir(entry, depth - 1, root, out);
-  }
+  const dirs = entries.filter(
+    (entry) => entry.kind === "directory" && !SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")
+  );
+  await mapLimit(dirs, 8, (entry) => scanDir(entry, depth - 1, root, out));
 }
 
+// 由 project.json 推断壁纸类型
 function inferType(project) {
   const raw = String(project.type || "").toLowerCase();
   if (TYPE_LABEL[raw]) return raw;
@@ -97,12 +140,14 @@ function inferType(project) {
   return "scene";
 }
 
+// 兼容旧版根目录条目（直接存句柄）
 function rootEntry(item) {
   // 兼容旧版：早期只存 FileSystemDirectoryHandle 本身
   if (item && typeof item.kind === "string") return { handle: item, label: item.name };
   return item;
 }
 
+// 并发扫描所有根目录并刷新列表
 async function rescan() {
   if (scanning) return;
   scanning = true;
@@ -117,13 +162,15 @@ async function rescan() {
     let skipped = 0;
     for (let i = 0; i < roots.length; i++) {
       const { handle, label } = roots[i];
-      status(`扫描目录 ${i + 1}/${roots.length}：${label}…`);
+      notice(`扫描目录 ${i + 1}/${roots.length}：${label}…`);
       if ((await permissionOf(handle)) !== "granted") {
         skipped++;
         continue;
       }
       await scanDir(handle, 5, label, found);
     }
+
+    flushProjectCache();
 
     state.walls = found
       .map((w, index) => ({
@@ -138,9 +185,9 @@ async function rescan() {
       .sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
 
     await renderWalls();
-    if (skipped) status(`${skipped} 个目录未授权，点击「授权」后重新扫描`);
+    if (skipped) notice(`${skipped} 个目录未授权，点击「授权」后重新扫描`);
     else
-      status(
+      notice(
         found.length
           ? `找到 ${found.length} 张壁纸`
           : "未找到壁纸。确认选择的是 projects 或 431960 目录"
@@ -152,6 +199,7 @@ async function rescan() {
 
 /* ---------------- 壁纸库渲染 ---------------- */
 
+// 为预览图生成 object URL
 async function previewUrl(wall) {
   const name = wall.project.preview;
   if (!name) return null;
@@ -165,6 +213,7 @@ async function previewUrl(wall) {
   }
 }
 
+// 释放已创建的预览 URL
 function clearThumbs() {
   for (const url of state.thumbs) URL.revokeObjectURL(url);
   state.thumbs = [];
@@ -173,6 +222,7 @@ function clearThumbs() {
 
 let previewObserver = null;
 
+// 懒加载预览的 IntersectionObserver
 function ensurePreviewObserver() {
   if (previewObserver) return previewObserver;
   previewObserver = new IntersectionObserver(
@@ -188,6 +238,7 @@ function ensurePreviewObserver() {
   return previewObserver;
 }
 
+// 卡片进入视口时加载预览图
 async function loadPreview(card) {
   const wall = state.walls.find((item) => item.id === card.dataset.id);
   if (!wall) return;
@@ -212,6 +263,7 @@ const WALL_GROUPS = [
 ];
 const MAX_PREVIEW = 50;
 
+// 构建单张壁纸卡片
 function wallCard(wall) {
   const card = document.createElement("button");
   card.className = "card";
@@ -228,6 +280,7 @@ function wallCard(wall) {
   return card;
 }
 
+// 按类型分组渲染壁纸列表
 async function renderWalls() {
   const box = $("walls");
   box.textContent = "";
@@ -287,8 +340,20 @@ function alignWallHeight(list) {
   list.style.setProperty("--wall-max", `${Math.round(rows * height + (rows - 1) * gap + 20)}px`);
 }
 
+// 先读后写，批量对齐所有滚动区高度
 function alignAllWallLists() {
-  for (const list of document.querySelectorAll(".wallList.scrollable")) alignWallHeight(list);
+  const lists = [...document.querySelectorAll(".wallList.scrollable")];
+  const heights = lists.map((list) => {
+    const card = list.querySelector(".card");
+    return card ? card.getBoundingClientRect().height : 0;
+  });
+  const gap = 8;
+  const rows = 5;
+  lists.forEach((list, index) => {
+    const height = heights[index];
+    if (height < 20) return;
+    list.style.setProperty("--wall-max", `${Math.round(rows * height + (rows - 1) * gap + 20)}px`);
+  });
 }
 /* ---------------- 目录监听 ---------------- */
 
@@ -296,6 +361,7 @@ let fsObserver = null;
 let rescanTimer = 0;
 let scanning = false;
 
+// 防抖触发重新扫描
 function scheduleRescan(delay = 1500) {
   clearTimeout(rescanTimer);
   rescanTimer = setTimeout(() => {

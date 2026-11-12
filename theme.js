@@ -10,6 +10,7 @@ const MONET_DEFAULTS = {
 
 /* ---------------- 颜色换算 ---------------- */
 
+// RGB → HSL
 function rgbToHsl(r, g, b) {
   r /= 255;
   g /= 255;
@@ -82,11 +83,13 @@ function parseSchemeColor(value) {
   return parts.slice(0, 3).map((n) => Math.round(n * scale));
 }
 
+// 场景壁纸取色
 function colorOfScene(wall) {
   const props = wall.project?.general?.properties || {};
   return parseSchemeColor(props.schemecolor?.value);
 }
 
+// 按壁纸类型取色
 function colorOfWall(wall) {
   if (!wall) return null;
   if (wall.type === "scene") return colorOfScene(wall);
@@ -99,6 +102,7 @@ function colorOfWall(wall) {
 
 /* ---------------- 应用到界面 ---------------- */
 
+// 写入强调色变量
 function paintTheme(rgb) {
   const root = document.documentElement;
   const [h, s, l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
@@ -112,6 +116,7 @@ function paintTheme(rgb) {
   root.style.setProperty("--accent-ink", light > 0.62 ? "#08222c" : "#f4fcff");
 }
 
+// 恢复默认强调色
 function paintThemeDefaults() {
   const root = document.documentElement;
   root.style.setProperty("--accent", MONET_DEFAULTS.accent);
@@ -119,6 +124,7 @@ function paintThemeDefaults() {
   root.style.setProperty("--accent-ink", MONET_DEFAULTS.ink);
 }
 
+// 按设置应用 / 清除取色
 function applyMonet(wall = state.current) {
   if (!state.settings.monet) return paintThemeDefaults();
   const wallObject = wall && state.walls.find((item) => item.id === wall.id);

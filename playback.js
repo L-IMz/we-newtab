@@ -7,15 +7,38 @@
 let propView = null;
 let propWallId = null;
 
+// 读取所有壁纸的已存属性
 async function readAllProps() {
   return (await chrome.storage.local.get("wallProps")).wallProps || {};
 }
 
+let wallPropsTimer = 0;
+
+// 关标签页/切走时把还没落盘的属性写掉
+window.addEventListener("pagehide", () => {
+  if (!wallPropsTimer || !propWallId || !state.propValues) return;
+  clearTimeout(wallPropsTimer);
+  wallPropsTimer = 0;
+  saveWallProps(propWallId, state.propValues).catch(() => {});
+});
+
+// 拖滑块时不必每次输入都整表落盘，停下来再写
+function scheduleWallPropsSave(id, values) {
+  clearTimeout(wallPropsTimer);
+  const snapshot = { ...values };
+  wallPropsTimer = setTimeout(() => {
+    saveWallProps(id, snapshot).catch(() => {});
+  }, 400);
+}
+
+// 保存某张壁纸的属性
 async function saveWallProps(id, values) {
   const all = await readAllProps();
   all[id] = values;
   await chrome.storage.local.set({ wallProps: all });
 }
+
+let propsQueued = false;
 
 // 把当前值下发给正在播放的壁纸
 function pushProps(values) {
@@ -32,12 +55,19 @@ function pushProps(values) {
     }
   }
   state.propValues = { ...values };
-  if (!state.current) return;
-  if (state.current.type === "scene") {
-    sceneFrame.contentWindow?.postMessage({ t: "props", props: state.propValues }, "*");
-  }
+  if (!state.current || state.current.type !== "scene") return;
+  // 拖滑块时每帧只发一次，避免 183 个属性的消息刷屏
+  state.pendingProps = state.propValues;
+  if (propsQueued) return;
+  propsQueued = true;
+  requestAnimationFrame(() => {
+    propsQueued = false;
+    const props = state.pendingProps;
+    if (props) sceneFrame.contentWindow?.postMessage({ t: "props", props }, "*");
+  });
 }
 
+// 生成属性面板并接管改动
 async function prepareProps(wall) {
   const defs = propDefs(wall);
   const section = $("propsSection");
@@ -71,7 +101,7 @@ async function prepareProps(wall) {
     values[name] = value;
     propView?.refresh(values);
     pushProps(values);
-    await saveWallProps(propWallId, values);
+    scheduleWallPropsSave(propWallId, values);
     if (state.parallaxDirty) {
       state.parallaxDirty = false;
       remountScene();
@@ -86,16 +116,18 @@ async function prepareProps(wall) {
     await chrome.storage.local.set({ wallProps: all });
     await prepareProps(wall);
     pushProps(state.propValues);
-    status("已恢复该壁纸的默认选项");
+    notice("已恢复该壁纸的默认选项");
   };
 }
 /* ---------------- 播放 ---------------- */
 
+// 隐藏视频 / 图片 / 场景
 function hideAll() {
   for (const el of [vid, img, sceneFrame]) el.classList.remove("on");
   vid.removeAttribute("src");
 }
 
+// 停止一切播放并通知沙箱
 function stopAll() {
   vid.pause();
   if (state.mediaUrl) {
@@ -113,6 +145,7 @@ function remountScene() {
   play(wall).catch(() => {});
 }
 
+// 播放一张壁纸
 async function play(wall) {
   stopAll();
   state.effectiveDpr = null;
@@ -130,7 +163,7 @@ async function play(wall) {
     await playMedia(wall, "image");
   } else {
     state.current = null;
-    status("该类型暂不支持（仅支持场景 / 视频 / 图片）");
+    notice("该类型暂不支持（仅支持场景 / 视频 / 图片）");
     return;
   }
 
@@ -146,6 +179,7 @@ async function play(wall) {
   applyAudioSource();
 }
 
+// 播放视频 / 图片
 async function playMedia(wall, kind) {
   const fileName = String(wall.project.file || "");
   const { file: blob } = await fileInfo(wall.dir, fileName);
@@ -157,18 +191,19 @@ async function playMedia(wall, kind) {
     vid.src = url;
     vid.playbackRate = Number(state.settings.rate) || 1;
     vid.classList.add("on");
-    vid.play().catch(() => status("视频自动播放被拦截，请点击页面"));
+    vid.play().catch(() => notice("视频自动播放被拦截，请点击页面"));
   } else {
     img.src = url;
     img.classList.add("on");
   }
-  status(`正在播放：${wall.title}`);
+  status(wall.title);
 }
 
 /* ---------------- 场景壁纸 ---------------- */
 
 const SCENE_BOOT_TIMEOUT = 8000;
 
+// 等沙箱渲染页就绪
 function waitSceneBoot() {
   return new Promise((resolve) => {
     if (state.sceneReady) return resolve(true);
@@ -189,6 +224,7 @@ function waitSceneBoot() {
   });
 }
 
+// 构造场景挂载消息
 async function scenePayload(wall) {
   const dir = wall.dir;
   const declared = String(wall.project.file || "");
@@ -236,15 +272,16 @@ async function scenePayload(wall) {
   };
 }
 
+// 挂载场景壁纸
 async function playScene(wall) {
 
   const alive = await waitSceneBoot();
   if (!alive) {
-    status("场景渲染器未启动（sandbox 页加载失败）");
+    notice("场景渲染器未启动（sandbox 页加载失败）");
     return;
   }
 
-  status(`正在加载：${wall.title}…`);
+  notice(`正在加载：${wall.title}…`);
   const msg = await scenePayload(wall);
   sceneFrame.classList.add("on");
   sceneFrame.contentWindow.postMessage(msg, "*");
@@ -278,19 +315,20 @@ window.addEventListener("message", (event) => {
     if (meter) meter.textContent = state.current ? `${state.fps} FPS` : "—";
   }
   // 降级类提示（软件渲染、贴图回退）只进控制台，不打断用户
-  if (data.t === "diag" && data.level === "error") status(data.msg);
+  if (data.t === "diag" && data.level === "error") notice(data.msg);
   if (data.t === "diag" && data.level !== "error") console.log("[diag]", data.msg);
-  if (data.t === "error") status(`壁纸加载失败：${data.msg}`);
+  if (data.t === "error") notice(`壁纸加载失败：${data.msg}`);
   if (data.t === "propsstate") console.log("[props]", JSON.stringify(data.values));
   if (data.t === "ready" && state.current) {
     if (state.playStart) console.log(`[perf] ${state.current.title} ready in ${Math.round(performance.now() - state.playStart)}ms`);
-    status(`正在播放：${state.current.title}`);
+    status(state.current.title);
   }
 });
 
 
 /* ---------------- 亮度 / 音量 / 轮换 / 音频 ---------------- */
 
+// 应用亮度遮罩
 function applyBrightness() {
   const value = Math.max(0, Math.min(100, Number(state.settings.brightness) || 100));
   $("dim").style.opacity = (value >= 100 ? 0 : (100 - value) / 100).toFixed(2);
@@ -298,6 +336,7 @@ function applyBrightness() {
   $("stage").style.filter = "";
 }
 
+// 应用场景音量
 function applyVolume() {
   const value = Math.max(0, Math.min(100, Number(state.settings.volume) || 0));
   sceneFrame.contentWindow?.postMessage({ t: "volume", value: value / 100 }, "*");
@@ -306,6 +345,7 @@ function applyVolume() {
 /* 自动轮换：按间隔切到列表里的下一张（可选随机） */
 let rotateTimer = 0;
 
+// 安排自动轮换
 function scheduleRotation() {
   clearTimeout(rotateTimer);
   if (!state.settings.rotate || state.walls.length < 2) return;
@@ -333,6 +373,7 @@ function scheduleRotation() {
 /* 音频响应：浏览器拿不到系统声音，只能用麦克风近似（默认关闭） */
 const mic = { ctx: null, stream: null, analyser: null, timer: 0, data: null };
 
+// 把麦克风频谱发给沙箱
 function pushAudio() {
   const frame = activeFrameOrNull();
   if (!frame || !mic.analyser) return;
@@ -344,6 +385,7 @@ function pushAudio() {
   frame.contentWindow?.postMessage({ t: "audio", left: bins, right: bins }, "*");
 }
 
+// 启动麦克风分析
 async function startMic() {
   if (mic.timer) return true;
   try {
@@ -356,14 +398,15 @@ async function startMic() {
     source.connect(analyser);
     Object.assign(mic, { ctx, stream, analyser });
     mic.timer = setInterval(pushAudio, 60);
-    status("已启用麦克风频谱（仅本机处理）");
+    notice("已启用麦克风频谱（仅本机处理）");
     return true;
   } catch (error) {
-    status(`麦克风不可用：${error.message || error}`);
+    notice(`麦克风不可用：${error.message || error}`);
     return false;
   }
 }
 
+// 停止麦克风
 function stopMic() {
   clearInterval(mic.timer);
   mic.timer = 0;
@@ -373,14 +416,16 @@ function stopMic() {
   sceneFrame.contentWindow?.postMessage({ t: "audio", off: true }, "*");
 }
 
+// 沙箱就绪时返回 iframe，否则 null
 function activeFrameOrNull() {
   return state.sceneReady ? sceneFrame : null;
 }
 
 /* ---------------- 系统音频桥（media-bridge） ---------------- */
 
-const bridge = { source: null, timer: 0, alive: false };
+const bridge = { source: null, timer: 0, alive: false, mediaTimer: 0, base: "" };
 
+// 把 64 段频谱发给沙箱
 function pushBins(bands) {
   const frame = activeFrameOrNull();
   if (!frame) return;
@@ -389,6 +434,7 @@ function pushBins(bands) {
   frame.contentWindow?.postMessage({ t: "audio", left, right: left }, "*");
 }
 
+// 断开桥并清空状态
 function stopBridge() {
   if (bridge.source) {
     bridge.source.close();
@@ -398,7 +444,47 @@ function stopBridge() {
     clearInterval(bridge.timer);
     bridge.timer = 0;
   }
+  if (bridge.mediaTimer) {
+    clearInterval(bridge.mediaTimer);
+    bridge.mediaTimer = 0;
+  }
+  activeFrameOrNull()?.contentWindow?.postMessage({ t: "media", off: true }, "*");
   bridge.alive = false;
+}
+
+/* media-bridge 的播放状态映射成 WebWallGL 的媒体快照 */
+function mediaSnapshot(now) {
+  const track = now?.track || {};
+  const playback = now?.playback || {};
+  const art = track.artwork;
+  const state = !now?.hasMedia ? 0 : playback.state === "playing" ? 1 : playback.state === "paused" ? 2 : 0;
+  return {
+    hasMedia: !!now?.hasMedia,
+    state,
+    title: track.title || "",
+    artist: track.artist || "",
+    album: track.album || "",
+    albumArtist: track.albumArtist || "",
+    position: Math.max(0, Number(playback.positionMs) || 0) / 1000,
+    duration: Math.max(0, Number(track.durationMs) || Number(playback.durationMs) || 0) / 1000,
+    hasThumbnail: !!art,
+    thumbnail: art?.httpPath ? bridge.base + art.httpPath : "",
+    trackIndex: 0,
+  };
+}
+
+// 拉一次“正在播放”
+async function pollMedia() {
+  const frame = activeFrameOrNull();
+  if (!frame) return;
+  try {
+    const res = await fetch(`${bridge.base}/v1/now`, { cache: "no-store" });
+    if (!res.ok) return;
+    const now = await res.json();
+    frame.contentWindow?.postMessage({ t: "media", snapshot: mediaSnapshot(now) }, "*");
+  } catch {
+    /* 单次轮询失败忽略，下一拍再试 */
+  }
 }
 
 // media-bridge 的 SSE：/v1/events?events=spectrum&spectrumMs=100
@@ -412,9 +498,13 @@ async function startBridge() {
     const probe = await fetch(`${base}/v1/now`, { cache: "no-store" });
     if (!probe.ok) throw new Error(`HTTP ${probe.status}`);
   } catch (error) {
-    status(`未检测到 media-bridge（${base}）：${error.message || error}`);
+    notice(`未检测到 media-bridge（${base}）：${error.message || error}。先运行 & "$env:USERPROFILE\\Downloads\\media-bridge-win32-x64.exe" serve --http ${base.replace("http://", "")}`);
     return;
   }
+
+  bridge.base = base;
+  pollMedia();
+  bridge.lastPoll = 0;
 
   const source = new EventSource(`${base}/v1/events?events=spectrum&spectrumMs=100`);
   bridge.source = source;
@@ -423,6 +513,12 @@ async function startBridge() {
       const payload = JSON.parse(event.data);
       const bands = payload?.frame?.bands;
       if (Array.isArray(bands)) pushBins(bands);
+      // 顺带刷新「正在播放」：定时器在后台会被节流，频谱帧本来就在持续到来
+      const stamp = performance.now();
+      if (stamp - (bridge.lastPoll || 0) > 900) {
+        bridge.lastPoll = stamp;
+        pollMedia();
+      }
     } catch {
       /* 单帧解析失败忽略 */
     }
@@ -430,22 +526,24 @@ async function startBridge() {
   source.onerror = () => {
     if (bridge.alive) {
       bridge.alive = false;
-      status("media-bridge 连接断开，正在重连…");
+      notice("media-bridge 连接断开，正在重连…");
     }
   };
   source.onopen = () => {
     if (!bridge.alive) {
       bridge.alive = true;
-      status("已接入 media-bridge 系统音频");
+      notice("已接入 media-bridge 系统音频");
     }
   };
 }
 
+// 停掉所有音频源
 function stopAudioSources() {
   stopMic();
   stopBridge();
 }
 
+// 按设置切换音频源
 async function applyAudioSource() {
   stopAudioSources();
   const source = state.settings.audioSource;
