@@ -1,20 +1,16 @@
+/* 全局状态与 DOM 引用：设置默认值、运行状态、共享元素查询。 */
 "use strict";
-
-/* 基础层：DOM 引用、默认设置与运行状态、IndexedDB / chrome.storage 封装、目录授权与文件读取。
-   所有模块都直接依赖这里的 $()、state、loadSettings/saveSettings、kvGet/kvSet。 */
-
-/* ---------------- DOM 引用 ---------------- */
 
 const $ = (id) => document.getElementById(id);
 const vid = $("vid");
 const img = $("img");
-// 关掉画中画/远程播放入口，避免视频壁纸弹出浏览器浮层
+
 vid.disablePictureInPicture = true;
 vid.disableRemotePlayback = true;
 vid.removeAttribute("controls");
 const sceneFrame = $("scene");
 
-/* ---------------- 默认设置 ---------------- */
+const webFrame = $("web");
 
 const DEFAULTS = {
   fps: 30,
@@ -44,9 +40,9 @@ const DEFAULTS = {
   rotate: false,
   rotateEvery: 5,
   rotateRandom: false,
+  enableWebService: false,
+  enableBridgeService: false,
 };
-
-/* ---------------- 运行状态 ---------------- */
 
 const state = {
   settings: { ...DEFAULTS },
@@ -62,14 +58,14 @@ const state = {
   tab: "wall",
   fps: 0,
   effectiveDpr: null,
+  webPort: 0,
+  propTypes: {},
+  webInfo: null,
 };
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "preview", "backup", "cache"]);
 const TYPE_LABEL = { scene: "场景", video: "视频", web: "网页", image: "图片", gif: "GIF", application: "应用" };
 
-/* ---------------- 存储 ---------------- */
-
-// 打开或创建本地数据库（只有一个 kv 存储）
 function idb() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("we-newtab", 1);
@@ -79,7 +75,6 @@ function idb() {
   });
 }
 
-// 读一个键
 async function kvGet(key) {
   const db = await idb();
   return new Promise((resolve, reject) => {
@@ -89,7 +84,6 @@ async function kvGet(key) {
   });
 }
 
-// 写一个键
 async function kvSet(key, value) {
   const db = await idb();
   return new Promise((resolve, reject) => {
@@ -99,39 +93,31 @@ async function kvSet(key, value) {
   });
 }
 
-// 载入设置并与默认值合并
 async function loadSettings() {
   const got = await chrome.storage.local.get("settings");
   state.settings = { ...DEFAULTS, ...(got.settings || {}) };
 }
 
-// 保存设置到 chrome.storage
 function saveSettings() {
   chrome.storage.local.set({ settings: state.settings });
 }
 
-/* ---------------- 目录授权 ---------------- */
-
-// 查询目录句柄的读取权限
 async function permissionOf(handle) {
   const q = await handle.queryPermission({ mode: "read" });
   return q;
 }
 
-// 必要时弹出目录授权请求
 async function ensurePermission(handle) {
   if ((await permissionOf(handle)) === "granted") return true;
   return (await handle.requestPermission({ mode: "read" })) === "granted";
 }
 
-// 按路径逐级取子目录句柄
 async function dirByPath(root, parts) {
   let cur = root;
   for (const part of parts) cur = await cur.getDirectoryHandle(part);
   return cur;
 }
 
-// 按相对路径取文件句柄与内容
 async function fileInfo(root, path) {
   const parts = path.split("/").filter(Boolean);
   const name = parts.pop();
@@ -141,10 +127,6 @@ async function fileInfo(root, path) {
   return { dir, file, name };
 }
 
-
-/* ---------------- 清理旧版缓存 ---------------- */
-
-// 旧版本把视频/场景包写进了 IndexedDB，新版不再使用，这里一次性删掉
 async function purgeLegacyCache() {
   const flag = await chrome.storage.local.get("legacyCachePurged");
   if (flag.legacyCachePurged) return;
@@ -163,7 +145,7 @@ async function purgeLegacyCache() {
       request.onerror = () => resolve();
     });
   } catch {
-    /* 清理失败不影响使用 */
+
   }
   await chrome.storage.local.set({ legacyCachePurged: true });
 }

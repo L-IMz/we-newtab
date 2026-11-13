@@ -1,12 +1,6 @@
+/* 壁纸库：扫描 Steam 库/创意工坊目录，解析 project.json，生成分类与封面。 */
 "use strict";
 
-/* 壁纸库：目录检测、扫描（并发 + project.json 缓存）、卡片列表、预览懒加载、
-   文件系统监听与自动重扫。对外提供 rescan()、renderWalls()、startWatcher()。 */
-
-/* ---------------- 扫描 ---------------- */
-
-// 浏览器无法枚举磁盘路径，但用户选一个上层目录后，这里能按已知安装布局
-// 把真正要用的子目录找出来（Steam 库 / 创意工坊 / 官方独立版）。
 const LAYOUT_HINTS = [
   ["steamapps", "workshop", "content", "431960"],
   ["steamapps", "common", "wallpaper_engine"],
@@ -20,25 +14,22 @@ const LAYOUT_HINTS = [
   ["projects"],
 ];
 
-// 目录项转成“小写名 → 句柄”映射，兼容大小写差异
 function lowerMap(entries) {
   const map = new Map();
   for (const entry of entries) map.set(entry.name.toLowerCase(), entry);
   return map;
 }
 
-// 枚举目录项；无权限时返回空数组
 async function entriesOf(dir) {
   const out = [];
   try {
     for await (const entry of dir.values()) out.push(entry);
   } catch {
-    /* 无权限 */
+
   }
   return out;
 }
 
-// 按已知子目录链解析真实路径
 async function resolveChain(dir, parts) {
   let current = dir;
   for (const part of parts) {
@@ -49,7 +40,6 @@ async function resolveChain(dir, parts) {
   return current;
 }
 
-// 返回该目录下所有“值得加入壁纸库”的目录
 async function detectRoots(handle) {
   const found = [];
   const seen = new Set();
@@ -69,7 +59,6 @@ async function detectRoots(handle) {
   return found;
 }
 
-/* 限制并发的小工具：目录多的时候别串行等 */
 async function mapLimit(items, limit, worker) {
   let index = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -81,24 +70,20 @@ async function mapLimit(items, limit, worker) {
   await Promise.all(runners);
 }
 
-/* project.json 解析缓存：文件没变就不重复 parse（按 lastModified + size 判断） */
 let projectCache = null;
 let projectCacheDirty = false;
 
-// 读取 project.json 解析缓存
 async function loadProjectCache() {
   if (!projectCache) projectCache = (await kvGet("projectCache").catch(() => null)) || {};
   return projectCache;
 }
 
-// 把解析缓存合并写回 IndexedDB
 function flushProjectCache() {
   if (!projectCache || !projectCacheDirty) return;
   projectCacheDirty = false;
   kvSet("projectCache", projectCache).catch(() => {});
 }
 
-// 递归扫描目录，收集带 project.json 的壁纸
 async function scanDir(dir, depth, root, out) {
   const entries = await entriesOf(dir);
   const cache = await loadProjectCache();
@@ -119,7 +104,7 @@ async function scanDir(dir, depth, root, out) {
       }
       out.push({ dir, name: dir.name, root, project: json });
     } catch {
-      /* 损坏的 project.json 直接跳过 */
+
     }
   }
 
@@ -130,7 +115,6 @@ async function scanDir(dir, depth, root, out) {
   await mapLimit(dirs, 8, (entry) => scanDir(entry, depth - 1, root, out));
 }
 
-// 由 project.json 推断壁纸类型
 function inferType(project) {
   const raw = String(project.type || "").toLowerCase();
   if (TYPE_LABEL[raw]) return raw;
@@ -141,14 +125,12 @@ function inferType(project) {
   return "scene";
 }
 
-// 兼容旧版根目录条目（直接存句柄）
 function rootEntry(item) {
-  // 兼容旧版：早期只存 FileSystemDirectoryHandle 本身
+
   if (item && typeof item.kind === "string") return { handle: item, label: item.name };
   return item;
 }
 
-// 并发扫描所有根目录并刷新列表
 async function rescan() {
   if (scanning) return;
   scanning = true;
@@ -175,7 +157,7 @@ async function rescan() {
 
     state.walls = found
       .map((w) => ({
-        // 用 根目录/壁纸目录名 做稳定 id；扫描顺序（并发）变了也不会变
+
         id: `${w.root}/${w.name}`,
         title: w.project.title || w.name,
         type: inferType(w.project),
@@ -183,7 +165,6 @@ async function rescan() {
         root: w.root,
         project: w.project,
       }))
-      .filter((wall) => wall.type !== "web")
       .sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
 
     await renderWalls();
@@ -199,9 +180,6 @@ async function rescan() {
   }
 }
 
-/* ---------------- 壁纸库渲染 ---------------- */
-
-// 为预览图生成 object URL
 async function previewUrl(wall) {
   const name = wall.project.preview;
   if (!name) return null;
@@ -215,7 +193,6 @@ async function previewUrl(wall) {
   }
 }
 
-// 释放已创建的预览 URL
 function clearThumbs() {
   for (const url of state.thumbs) URL.revokeObjectURL(url);
   state.thumbs = [];
@@ -224,7 +201,6 @@ function clearThumbs() {
 
 let previewObserver = null;
 
-// 懒加载预览的 IntersectionObserver
 function ensurePreviewObserver() {
   if (previewObserver) return previewObserver;
   previewObserver = new IntersectionObserver(
@@ -240,7 +216,6 @@ function ensurePreviewObserver() {
   return previewObserver;
 }
 
-// 卡片进入视口时加载预览图
 async function loadPreview(card) {
   const wall = state.walls.find((item) => item.id === card.dataset.id);
   if (!wall) return;
@@ -260,12 +235,12 @@ async function loadPreview(card) {
 const WALL_GROUPS = [
   { type: "scene", label: "场景壁纸" },
   { type: "video", label: "视频壁纸" },
+  { type: "web", label: "网页壁纸" },
   { type: "image", label: "图片壁纸" },
   { type: "gif", label: "动态图片" },
 ];
 const MAX_PREVIEW = 50;
 
-// 构建单张壁纸卡片
 function wallCard(wall) {
   const card = document.createElement("button");
   card.className = "card";
@@ -282,7 +257,6 @@ function wallCard(wall) {
   return card;
 }
 
-// 按类型分组渲染壁纸列表
 async function renderWalls() {
   const box = $("walls");
   box.textContent = "";
@@ -316,8 +290,6 @@ async function renderWalls() {
       observer.observe(card);
     }
 
-    // ≤50 张：整块平铺、不出滚动条；>50 张：给可视区固定高度，出现 WinUI 风格滚动条，
-    // 框内滚轮即可浏览全部（含第 50 张之后的）
     if (items.length > MAX_PREVIEW) {
       list.classList.add("scrollable");
       alignWallHeight(list);
@@ -330,14 +302,12 @@ async function renderWalls() {
   }
 }
 
-// 由单行卡片高度换算滚动区可视高度：5 整行 + 行间隙 + 内边距/滚动条余量
 function wallListMax(cardHeight) {
   const gap = 8;
   const rows = 5;
   return Math.round(rows * cardHeight + (rows - 1) * gap + 20);
 }
 
-// 单个列表对齐：面板隐藏时量不到高度，打开面板后再补一次
 function alignWallHeight(list) {
   const card = list.querySelector(".card");
   if (!card) return;
@@ -346,7 +316,6 @@ function alignWallHeight(list) {
   list.style.setProperty("--wall-max", `${wallListMax(height)}px`);
 }
 
-// 批量对齐：先读所有高度，再统一写样式，避免读写交替触发重排
 function alignAllWallLists() {
   const lists = [...document.querySelectorAll(".wallList.scrollable")];
   const heights = lists.map((list) => {
@@ -358,13 +327,11 @@ function alignAllWallLists() {
     list.style.setProperty("--wall-max", `${wallListMax(heights[index])}px`);
   });
 }
-/* ---------------- 目录监听 ---------------- */
 
 let fsObserver = null;
 let rescanTimer = 0;
 let scanning = false;
 
-// 防抖触发重新扫描
 function scheduleRescan(delay = 1500) {
   clearTimeout(rescanTimer);
   rescanTimer = setTimeout(() => {
@@ -373,13 +340,12 @@ function scheduleRescan(delay = 1500) {
   }, delay);
 }
 
-// Chromium 的 FileSystemObserver：创意工坊新增/删除壁纸后自动刷新列表
 async function startWatcher() {
   if (!("FileSystemObserver" in window)) return;
   try {
     fsObserver?.disconnect();
   } catch {
-    /* 旧实例已失效 */
+
   }
   try {
     fsObserver = new FileSystemObserver(() => scheduleRescan());
@@ -387,18 +353,16 @@ async function startWatcher() {
       try {
         await fsObserver.observe(rootEntry(item).handle, { recursive: true });
       } catch {
-        /* 单个目录失败不影响其它 */
+
       }
     }
   } catch {
     fsObserver = null;
   }
 }
-/* ---------------- 在 Steam 中浏览工坊 ---------------- */
 
 const WE_WORKSHOP_URL = "https://steamcommunity.com/app/431960/workshop/";
 
-// 只做跳转：订阅与下载交给 Steam 客户端，扩展这边只管发现已下载的壁纸
 function openSteamWorkshop() {
   const url = WE_WORKSHOP_URL;
   try {
@@ -410,7 +374,7 @@ function openSteamWorkshop() {
       return;
     }
   } catch {
-    /* 退回到 window.open */
+
   }
   window.open(url, "_blank");
 }

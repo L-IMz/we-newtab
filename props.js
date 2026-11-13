@@ -1,13 +1,8 @@
+/* 壁纸属性：默认值、类型转换、控件生成与增量下发。 */
 "use strict";
-
-/* 壁纸自定义选项：解析 project.json 的 general.properties，生成控件并求值 condition。
-   只处理文本与数值，不执行壁纸提供的任何 HTML/脚本。 */
-
-/* ---------------- 属性类型与文本 ---------------- */
 
 const PROP_TYPES = new Set(["slider", "color", "bool", "combo", "textinput", "text", "group", "file"]);
 
-// 把 WE 的富文本标记压成纯文本
 function plainText(html) {
   return String(html || "")
     .replace(/<br\s*\/?>/gi, " ")
@@ -25,7 +20,6 @@ const PROP_LABELS = {
   ui_browse_properties_scheme_color: "系统配色",
 };
 
-// WE 的 text 字段可能是本地化 key（如 ui_browse_properties_scheme_color），也可能是带 HTML 的说明
 function labelOf(def) {
   const raw = String(def.text || "");
   const text = plainText(raw);
@@ -40,9 +34,6 @@ function labelOf(def) {
   return text;
 }
 
-/* ---------------- condition 求值 ---------------- */
-
-// 宽松比较（数字或字符串）
 function compare(a, b, op) {
   const numA = typeof a === "boolean" ? Number(a) : Number(a);
   const numB = typeof b === "boolean" ? Number(b) : Number(b);
@@ -51,7 +42,6 @@ function compare(a, b, op) {
   return op === "==" ? equal : !equal;
 }
 
-// 求值 condition 表达式
 function evalCondition(expression, values) {
   const src = String(expression || "").trim();
   if (!src) return true;
@@ -117,7 +107,7 @@ function evalCondition(expression, values) {
       return text;
     }
     const rest = src.slice(i);
-    // true/false 必须先于标识符判断，否则会被当成属性名查表
+
     if (/^true\b/.test(rest)) {
       i += 4;
       return true;
@@ -144,13 +134,10 @@ function evalCondition(expression, values) {
   try {
     return Boolean(parseOr());
   } catch {
-    return true; // 解析失败时按“显示”处理，宁可多给控件也不藏掉
+    return true;
   }
 }
 
-/* ---------------- 属性定义解析 ---------------- */
-
-// 从 project.json 提取可渲染的属性定义
 function propDefs(wall) {
   const props = wall?.project?.general?.properties || {};
   return Object.entries(props)
@@ -159,24 +146,28 @@ function propDefs(wall) {
     .sort((a, b) => Number(a.def.order ?? 0) - Number(b.def.order ?? 0));
 }
 
-/* ---------------- 取值与格式化 ---------------- */
-
-// 按定义生成默认值
 function defaultValues(defs) {
   const values = {};
   for (const { name, def } of defs) {
-    if (def.type === "text" || def.type === "file") continue;
+
+    if (def.type === "file" || def.type === "directory" || def.type === "text" || def.type === "textinput") {
+      values[name] = def.value ?? "";
+      continue;
+    }
     if (def.value !== undefined) values[name] = def.value;
     else if (def.type === "bool") values[name] = false;
     else if (def.type === "slider") values[name] = Number(def.min ?? 0);
     else if (def.type === "combo") values[name] = def.options?.[0]?.value ?? 0;
     else if (def.type === "color") values[name] = "1 1 1";
     else values[name] = "";
+
+    if (def.type === "color" && typeof values[name] === "string" && /^#[0-9a-f]{6}$/i.test(values[name])) {
+      values[name] = hexToColorString(values[name]);
+    }
   }
   return values;
 }
 
-// “r g b” → #rrggbb
 function colorStringToHex(value) {
   const parts = String(value || "1 1 1").trim().split(/\s+/).map(Number);
   const rgb = parts.length === 3 ? parts : [1, 1, 1];
@@ -184,21 +175,18 @@ function colorStringToHex(value) {
   return `#${rgb.map((v) => toByte(v).toString(16).padStart(2, "0")).join("")}`;
 }
 
-// #rrggbb → “r g b”
 function hexToColorString(hex) {
   const clean = hex.replace("#", "");
   const rgb = [0, 2, 4].map((offset) => parseInt(clean.slice(offset, offset + 2), 16) / 255);
   return rgb.map((v) => Math.round(v * 1000) / 1000).join(" ");
 }
 
-// 任意颜色表示 → #rrggbb
 function colorFromHexOrRgb(value) {
   const text = String(value || "").trim();
   if (/^#[0-9a-f]{6}$/i.test(text)) return text;
   return colorStringToHex(text);
 }
 
-// 滑块数值显示：小数按 precision 补零，整数取整
 function formatPropValue(def, raw) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return String(raw ?? "");
@@ -206,17 +194,12 @@ function formatPropValue(def, raw) {
   return def.fraction ? n.toFixed(Math.min(4, Math.max(0, precision))) : String(Math.round(n));
 }
 
-/* ---------------- 控件生成 ---------------- */
-
 const el = (tag, className) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
 };
 
-/* ---------------- 视图渲染 ---------------- */
-
-/* 渲染控件列表。onChange(name, value) 由调用方负责持久化与下发 */
 function renderProperties(container, defs, values, onChange) {
   container.textContent = "";
   const fragment = document.createDocumentFragment();
@@ -224,7 +207,7 @@ function renderProperties(container, defs, values, onChange) {
 
   for (const { name, def } of defs) {
     const row = el("div", "prop");
-    row.dataset.prop = name; // 便于调试与自动化定位
+    row.dataset.prop = name;
 
     if (def.type === "group") {
       row.className = "prop prop-group";
@@ -285,7 +268,7 @@ function renderProperties(container, defs, values, onChange) {
       wrap.append(slider, readout);
       control = wrap;
     } else if (def.type === "combo") {
-      // 选项值可能是字符串（"1"）也可能是数字（1），必须原样回传，WE 的壁纸依赖这个类型
+
       const options = def.options || [];
       control = el("select");
       options.forEach((option, index) => {
@@ -323,11 +306,10 @@ function renderProperties(container, defs, values, onChange) {
 
   container.appendChild(fragment);
 
-  // 同一帧内的多次刷新合并成一次，拖滑块时不再逐事件布局
   let refreshQueued = false;
   let pendingValues = null;
   const applyRefresh = (values) => {
-    // 分组（group）属性没有值，条件里引用它时按“始终成立”处理
+
     const evalValues = { ...values };
     for (const { name, def } of defs) if (def.type === "group") evalValues[name] = true;
     for (const { row, def } of rows) {
@@ -337,7 +319,7 @@ function renderProperties(container, defs, values, onChange) {
   };
 
   return {
-    // 依据当前值刷新 condition 可见性
+
     refresh(nextValues) {
       pendingValues = nextValues;
       if (refreshQueued) return;

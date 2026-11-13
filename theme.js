@@ -1,6 +1,5 @@
+/* 主题色：从壁纸取色并计算、应用 Monet 调色板。 */
 "use strict";
-
-/* 莫奈取色：从当前壁纸采样主色，生成强调色并写入 CSS 变量，主题跟着壁纸走。 */
 
 const MONET_DEFAULTS = {
   accent: "#60cdff",
@@ -8,9 +7,6 @@ const MONET_DEFAULTS = {
   ink: "#003651",
 };
 
-/* ---------------- 颜色换算 ---------------- */
-
-// RGB → HSL
 function rgbToHsl(r, g, b) {
   r /= 255;
   g /= 255;
@@ -28,7 +24,6 @@ function rgbToHsl(r, g, b) {
   return [h * 60, s, l];
 }
 
-/* 从像素里挑代表色：优先饱和度高的，避开纯黑纯白与灰 */
 function dominantColor(pixels) {
   let best = null;
   let bestScore = -1;
@@ -45,7 +40,6 @@ function dominantColor(pixels) {
   return best;
 }
 
-/* 把一张图/视频当前帧缩到 24×24 再统计，够快也够稳 */
 function sampleElement(source) {
   try {
     const size = 24;
@@ -62,12 +56,11 @@ function sampleElement(source) {
     }
     return dominantColor(pixels);
   } catch {
-    // 跨域画面会被画布拒绝，交给调用方回退
+
     return null;
   }
 }
 
-/* 壁纸里的 schemecolor 是 0~1 的 "r g b"，也可能存成 {x,y,z} */
 function parseSchemeColor(value) {
   if (!value) return null;
   if (typeof value === "object") {
@@ -83,13 +76,11 @@ function parseSchemeColor(value) {
   return parts.slice(0, 3).map((n) => Math.round(n * scale));
 }
 
-// 场景壁纸取色
 function colorOfScene(wall) {
   const props = wall.project?.general?.properties || {};
   return parseSchemeColor(props.schemecolor?.value);
 }
 
-// 按壁纸类型取色
 function colorOfWall(wall) {
   if (!wall) return null;
   if (wall.type === "scene") return colorOfScene(wall);
@@ -100,13 +91,10 @@ function colorOfWall(wall) {
   return null;
 }
 
-/* ---------------- 应用到界面 ---------------- */
-
-// 写入强调色变量
 function paintTheme(rgb) {
   const root = document.documentElement;
   const [h, s, l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
-  // 灰调画面取色没有意义，保持默认蓝
+
   if (s < 0.12) return paintThemeDefaults();
   const sat = Math.min(0.85, Math.max(0.5, s));
   const light = Math.min(0.72, Math.max(0.58, l));
@@ -116,7 +104,6 @@ function paintTheme(rgb) {
   root.style.setProperty("--accent-ink", light > 0.62 ? "#08222c" : "#f4fcff");
 }
 
-// 恢复默认强调色
 function paintThemeDefaults() {
   const root = document.documentElement;
   root.style.setProperty("--accent", MONET_DEFAULTS.accent);
@@ -124,7 +111,6 @@ function paintThemeDefaults() {
   root.style.setProperty("--accent-ink", MONET_DEFAULTS.ink);
 }
 
-// 按设置应用 / 清除取色
 function applyMonet(wall = state.current) {
   if (!state.settings.monet) return paintThemeDefaults();
   const wallObject = wall && state.walls.find((item) => item.id === wall.id);
@@ -133,7 +119,6 @@ function applyMonet(wall = state.current) {
   else paintThemeDefaults();
 }
 
-// 视频/图片解码完成后才取得到颜色，补一次
 vid.addEventListener("loadeddata", () => {
   if (state.current?.type === "video") applyMonet();
 });

@@ -91,7 +91,8 @@ check("按 order 排序", defs.map((d) => d.name).join(",") === "schemecolor,not
 const defaults = t.defaultValues(defs);
 check("combo 默认值保持字符串", defaults.background === "1");
 check("bool 默认值", defaults.bgm === true);
-check("text/file 不产生值", defaults.note === undefined && defaults.pick === undefined);
+check("text/file 默认空串（要发给壁纸才会清空内部状态）", defaults.note === "" && defaults.pick === "");
+check("color 保持 0-1 RGB 字符串", defaults.schemecolor === "0.35294 0.43922 0.55686");
 
 // 文案清洗
 check("去标签取文本", t.plainText("<h4>标题</h4><small>说明</small>") === "标题 说明");

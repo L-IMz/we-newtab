@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- 新标签页外壳：壁纸舞台、设置面板与属性面板的 DOM 结构。 -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -7,11 +8,11 @@
 </head>
 <body>
 
-
 <div id="stage">
   <video id="vid" muted loop playsinline disablepictureinpicture disableremoteplayback aria-hidden="true"></video>
   <img id="img" alt="">
   <iframe id="scene" src="render.html" title="壁纸渲染"></iframe>
+  <iframe id="web" title="网页壁纸" allow="autoplay; fullscreen"></iframe>
 </div>
 <div id="dim" aria-hidden="true"></div>
 <main id="clock">
@@ -189,11 +190,6 @@
           <option value="bridge">系统音频（media-bridge）</option>
         </select>
       </label>
-      <label>桥接端口<input id="bridgePort" type="number" min="1024" max="65535" step="1" value="8765"></label>
-      <div class="row"><button id="bridgeStart">启动 media-bridge</button></div>
-      <label class="check"><input type="checkbox" id="bridgeAuto"> 开机自动启动</label>
-      <p class="hint" id="bridgeState">服务状态未知</p>
-      <p class="hint">默认在 <code>C:\Program Files\media-bridge-win32-x64.exe</code> 找，找不到再退回 Downloads / 桌面；也可以手动执行 <code>&amp; "C:\Program Files\media-bridge-win32-x64.exe" serve --http</code>。</p>
       <label class="check"><input type="checkbox" id="rotate"> 自动轮换壁纸</label>
       <label>轮换间隔
         <select id="rotateEvery">
@@ -204,6 +200,18 @@
         </select>
       </label>
       <label class="check"><input type="checkbox" id="rotateRandom"> 随机顺序</label>
+    </section>
+
+    <section>
+      <h2>本地服务</h2>
+      <p class="hint">两项服务随 Edge 启动：每次打开新标签页时自动拉起，关掉开关则停止。</p>
+      <label class="check"><input type="checkbox" id="webService"> 网页壁纸服务（本地 http 源）</label>
+      <label class="check"><input type="checkbox" id="bridgeService"> 系统音频 media-bridge</label>
+      <label>桥接端口<input id="bridgePort" type="number" min="1024" max="65535" step="1" value="8765"></label>
+      <div class="row"><button id="bridgeStart">立即启动 media-bridge</button></div>
+      <p class="hint" id="serviceState">未启用</p>
+      <p class="hint" id="bridgeState">服务状态未知</p>
+      <p class="hint">media-bridge 默认在 <code>C:\Program Files\media-bridge-win32-x64.exe</code> 找，找不到再退回 Downloads / 桌面。</p>
     </section>
 
     <section>

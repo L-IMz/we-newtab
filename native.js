@@ -1,15 +1,38 @@
+/* 原生宿主桥：显卡偏好、本地网页服务、media-bridge 生命周期。 */
 "use strict";
 
-/* 原生能力层：显卡偏好（浏览器不提供 API）与 media-bridge 服务管理。
-   所有操作都走本地原生消息宿主 com.we.newtab.gpu，失败时静默降级。 */
+let webPortAt = 0;
 
-/* ---------------- 浏览器与显卡 ---------------- */
+async function ensureWebService(force) {
+  if (!force && state.webPort && Date.now() - webPortAt < 30000) return state.webPort;
+  try {
+    const res = await nativeRequest({ cmd: "web-serve", roots: [] });
+    if (res && res.ok && res.port) {
+      state.webPort = res.port;
+      webPortAt = Date.now();
+      return res.port;
+    }
+  } catch {
+
+  }
+  state.webPort = 0;
+  return 0;
+}
+
+async function stopWebService() {
+  try {
+    await nativeRequest({ cmd: "web-stop" });
+  } catch {
+
+  }
+  state.webPort = 0;
+  webPortAt = 0;
+}
 
 const GPU_HOST = "com.we.newtab.gpu";
 
 let rendererCache = null;
 
-// 当前 WebGL 渲染器名（只取一次）
 function rendererName() {
   if (rendererCache) return rendererCache;
   try {
@@ -26,9 +49,6 @@ function rendererName() {
   }
 }
 
-/* ---------------- 原生消息通道 ---------------- */
-
-// 与本地宿主通信：浏览器不提供修改显卡偏好的 API，只能走原生消息
 function nativeRequest(message) {
   return new Promise((resolve, reject) => {
     let port;
@@ -46,7 +66,7 @@ function nativeRequest(message) {
       try {
         port.disconnect();
       } catch {
-        /* 已断开 */
+
       }
       fn(value);
     };
@@ -70,7 +90,6 @@ const GPU_OPTIONS = [
   [0, "gpuAuto", "自动"],
 ];
 
-// 让按钮状态与系统里实际写入的偏好一致（切换后立即回填，重启后也一致）
 function applyGpuSelection(pref) {
   for (const [value, id] of GPU_OPTIONS) {
     const button = $(id);
@@ -83,7 +102,6 @@ function applyGpuSelection(pref) {
 
 let gpuCheckedAt = 0;
 
-// 读取显卡偏好并刷新 UI
 async function refreshGpu(keepMessage) {
   $("gpuRenderer").textContent = `当前渲染器：${rendererName()}`;
   if (!keepMessage && Date.now() - gpuCheckedAt < 5000) return;
@@ -106,7 +124,6 @@ async function refreshGpu(keepMessage) {
   }
 }
 
-// 写入显卡偏好
 async function setGpu(pref) {
   try {
     const res = await nativeRequest({ cmd: "set", pref });
@@ -125,7 +142,6 @@ async function setGpu(pref) {
   }
 }
 
-// 下载原生宿主安装包
 async function downloadInstaller() {
   try {
     for (const name of ["install.ps1", "WeGpuHost.cs"]) {
@@ -141,7 +157,6 @@ async function downloadInstaller() {
   }
 }
 
-// 绑定显卡相关按钮
 function bindGpu() {
   $("gpuHigh").addEventListener("click", () => setGpu(2));
   $("gpuLow").addEventListener("click", () => setGpu(1));
@@ -151,14 +166,10 @@ function bindGpu() {
   refreshGpu();
 }
 
-/* ---------------- media-bridge 服务 ---------------- */
-
-// 桥的基地址
 function bridgeBase() {
   return `http://127.0.0.1:${Math.max(1, Number(state.settings.bridgePort) || 8765)}`;
 }
 
-// 拉一次 /v1/now
 async function bridgeNow() {
   const res = await Promise.race([
     fetch(`${bridgeBase()}/v1/now`, { cache: "no-store" }),
@@ -170,58 +181,68 @@ async function bridgeNow() {
 
 let bridgeCheckedAt = 0;
 
-// 同步桥运行状态与自启状态
-async function syncBridge(autoStart, force) {
+async function syncBridge(force) {
   if (!force && Date.now() - bridgeCheckedAt < 10000) return;
   bridgeCheckedAt = Date.now();
   try {
     const now = await bridgeNow();
     const track = now?.track;
     $("bridgeState").textContent = now?.hasMedia
-      ? `服务运行中：${track?.title || "未知曲目"}${track?.artist ? " - " + track.artist : ""}`
-      : "服务运行中，当前没有正在播放的媒体";
+      ? `运行中：${track?.title || "未知曲目"}${track?.artist ? " - " + track.artist : ""}`
+      : "运行中，当前没有正在播放的媒体";
   } catch {
-    $("bridgeState").textContent = autoStart
-      ? "服务未运行：点「启动 media-bridge」，或勾选开机自启"
-      : "服务未运行：点「启动 media-bridge」";
-  }
-  try {
-    const res = await nativeRequest({ cmd: "bridge-status" });
-    $("bridgeAuto").checked = !!res.autostart;
-  } catch {
-    $("bridgeAuto").checked = false;
+    $("bridgeState").textContent = "未运行";
   }
 }
 
-// 通过宿主启动 media-bridge
 async function startBridgeService() {
   $("bridgeState").textContent = "正在启动…";
   try {
     const res = await nativeRequest({ cmd: "bridge-start", port: state.settings.bridgePort });
-    if (res.ok) {
-      await new Promise((r) => setTimeout(r, 1200));
-      await syncBridge(false, true);
-      if (state.settings.audioSource === "bridge") applyAudioSource();
-    } else {
+    if (!res.ok) {
       $("bridgeState").textContent = `启动失败：${res.error || "未知原因"}`;
+      return false;
     }
+    await new Promise((r) => setTimeout(r, 1200));
+    await syncBridge(true);
+    if (state.settings.audioSource === "bridge") applyAudioSource();
+    return true;
   } catch (error) {
     $("bridgeState").textContent = `启动失败：${error.message || error}（需要先安装辅助程序）`;
+    return false;
   }
 }
 
-// 设置 / 取消开机自启
-async function toggleBridgeAutostart() {
-  const enabled = $("bridgeAuto").checked;
+async function stopBridgeService() {
   try {
-    const res = await nativeRequest({ cmd: "bridge-autostart", enabled, port: state.settings.bridgePort });
-    $("bridgeState").textContent = res.ok
-      ? enabled
-        ? "已加入开机启动（登录后自动运行）"
-        : "已取消开机启动"
-      : `设置失败：${res.error || "未知原因"}`;
-  } catch (error) {
-    $("bridgeAuto").checked = !enabled;
-    $("bridgeState").textContent = `设置失败：${error.message || error}（需要先安装辅助程序）`;
+    await nativeRequest({ cmd: "bridge-stop" });
+  } catch {
+
+  }
+  bridgeCheckedAt = 0;
+  $("bridgeState").textContent = "未运行";
+}
+
+async function applyLocalServices() {
+  if (state.settings.enableWebService) await ensureWebService(true);
+  else await stopWebService();
+  if (state.settings.enableBridgeService) await startBridgeService();
+  else await stopBridgeService();
+  const web = state.webPort ? `网页壁纸 127.0.0.1:${state.webPort}` : "网页壁纸未启用";
+  const bridge = state.settings.enableBridgeService ? "media-bridge 已启动" : "media-bridge 未启用";
+  $("serviceState").textContent = `${web} · ${bridge}`;
+
+  $("bridgeState").hidden = !state.settings.enableBridgeService;
+  if (state.settings.enableBridgeService) syncBridge();
+}
+
+async function cleanLegacyAutostart() {
+  try {
+    const done = await chrome.storage.local.get("legacyAutostartCleaned");
+    if (done.legacyAutostartCleaned) return;
+    await nativeRequest({ cmd: "autostart-clean" });
+    await chrome.storage.local.set({ legacyAutostartCleaned: true });
+  } catch {
+
   }
 }

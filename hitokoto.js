@@ -1,6 +1,5 @@
+/* 一言：拉取、缓存与展示，含字体和样式设置。 */
 "use strict";
-
-/* 一言：左下角随机句子，支持字号、字体、导入自定义字体，带本地缓存。 */
 
 const HITOKOTO_API = "https://v1.hitokoto.cn/";
 const HITOKOTO_TTL = 10 * 60 * 1000;
@@ -12,14 +11,12 @@ const HITOKOTO_FONTS = {
   mono: '"Cascadia Mono", Consolas, monospace',
 };
 
-// 当前字体族
 function hitokotoFamily() {
   const key = state.settings.hitokotoFont || "system";
   if (key === "custom") return `"${fontSlot("hitokoto").family}", var(--font)`;
   return HITOKOTO_FONTS[key] || HITOKOTO_FONTS.system;
 }
 
-// 应用显隐、字号与字体
 function applyHitokotoStyle() {
   const el = $("hitokoto");
   if (!el) return;
@@ -29,9 +26,6 @@ function applyHitokotoStyle() {
   root.style.setProperty("--hitokoto-font", hitokotoFamily());
 }
 
-/* ---------------- 内容 ---------------- */
-
-// 取一言（带 10 分钟缓存）
 async function loadHitokoto(force) {
   const cached = await kvGet("hitokotoCache").catch(() => null);
   if (!force && cached?.text && Date.now() - cached.at < HITOKOTO_TTL) return cached;
@@ -48,7 +42,6 @@ async function loadHitokoto(force) {
   return entry;
 }
 
-// 渲染一言
 async function renderHitokoto(force) {
   applyHitokotoStyle();
   const el = $("hitokoto");
@@ -59,16 +52,13 @@ async function renderHitokoto(force) {
     el.dataset.from = entry.from ? `—— ${entry.from}` : "";
     el.hidden = false;
   } catch {
-    // 拉不到就安静地留空，不打断壁纸
+
     el.textContent = "";
     el.dataset.from = "";
     el.hidden = true;
   }
 }
 
-/* ---------------- 字体导入 ---------------- */
-
-// 导入一言字体
 async function importHitokotoFont(file) {
   const stateEl = $("hitokotoState");
   if (!file) return;
@@ -84,7 +74,6 @@ async function importHitokotoFont(file) {
   }
 }
 
-// 恢复系统字体
 async function clearHitokotoFont() {
   await clearImportedFont("hitokoto");
   state.settings.hitokotoFont = "system";

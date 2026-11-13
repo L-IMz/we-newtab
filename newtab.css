@@ -1,5 +1,6 @@
+/* 新标签页样式：舞台、面板、控件与主题变量的分层样式。 */
 :root {
-  /* Fluent 2 / WinUI 3 深色令牌 */
+
   --fg: #ffffff;
   --fg-2: rgba(255, 255, 255, .786);
   --fg-3: rgba(255, 255, 255, .544);
@@ -12,8 +13,8 @@
   --accent-dim: rgba(96, 205, 255, .18);
   --accent-ink: #003651;
   --radius-s: 4px;
-  --ctrl-h: 32px; /* 控件统一高度，与按钮同节奏 */
-  --col-ctrl: 156px; /* 设置行右侧控件列宽度统一 */
+  --ctrl-h: 32px;
+  --col-ctrl: 156px;
   --radius-m: 8px;
   --radius-l: 12px;
   --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
@@ -35,7 +36,6 @@ html, body {
 #stage > * { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: none; }
 #stage > .on { display: block; }
 
-/* 亮度遮罩：比 CSS filter 稳（filter 直接作用于 iframe 会让 WebGL 画布变黑） */
 #dim {
   position: fixed;
   inset: 0;
@@ -46,10 +46,12 @@ html, body {
 }
 #vid, #img { object-fit: cover; }
 
-/* 时钟 */
+#web { background: #0a0a0a; }
+#web.on { pointer-events: auto; }
+
 #clock {
   position: fixed;
-  z-index: 3; /* 压在亮度遮罩之上 */
+  z-index: 3;
   left: var(--clock-x, 50%);
   top: var(--clock-y, 42%);
   transform: translate(-50%, -50%);
@@ -70,7 +72,6 @@ html, body {
 body.bare #clock, body.bare #gear { opacity: 0; pointer-events: none; }
 #clock[hidden] { display: none; }
 
-/* 状态 */
 #status {
   position: fixed;
   z-index: 45;
@@ -90,7 +91,6 @@ body.bare #clock, body.bare #gear { opacity: 0; pointer-events: none; }
 }
 #status[hidden] { display: none; }
 
-/* 齿轮 */
 #gear {
   position: fixed;
   right: 24px;
@@ -110,7 +110,6 @@ body.bare #clock, body.bare #gear { opacity: 0; pointer-events: none; }
 #gear:hover { opacity: 1; background: var(--card-hover); transform: rotate(30deg); }
 #gear svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 
-/* 面板：Mica 质感 */
 #panel {
   position: fixed;
   z-index: 40;
@@ -120,8 +119,7 @@ body.bare #clock, body.bare #gear { opacity: 0; pointer-events: none; }
   height: 100%;
   padding: 20px 22px 48px;
   overflow-y: auto;
-  /* 大面积毛玻璃覆盖在动画画布上会每帧重算模糊，直接把 GPU 拖死；
-     这里用接近不透明的纯色，视觉差异很小，但不再有合成开销 */
+
   background: rgba(26, 26, 28, .96);
   border-left: 1px solid var(--stroke-strong);
   box-shadow: -30px 0 80px rgba(0, 0, 0, .5);
@@ -191,7 +189,6 @@ body.bare #clock, body.bare #gear { opacity: 0; pointer-events: none; }
   justify-content: center;
 }
 
-/* 表单行：WinUI 设置页的 label / control 双列 */
 label {
   display: grid;
   grid-template-columns: 1fr var(--col-ctrl);
@@ -210,7 +207,7 @@ label.check {
   gap: 10px;
   grid-template-columns: none;
 }
-/* 滑块 + 右侧数值，作为一个整体占控件列 */
+
 .slider-field {
   display: flex;
   align-items: center;
@@ -226,7 +223,6 @@ label.check {
 }
 .slider-field .unit { width: 40px; }
 
-/* 复选框放到右侧控件列，和其它行的控件右对齐 */
 label.check input {
   order: 2;
   margin: 0 0 0 auto;
@@ -313,7 +309,6 @@ button.link:hover { text-decoration: underline; background: none; }
 
 .row { display: flex; gap: 8px; margin: 10px 0 2px; flex-wrap: wrap; }
 
-/* 目录 */
 #roots .root {
   display: flex;
   align-items: center;
@@ -328,7 +323,6 @@ button.link:hover { text-decoration: underline; background: none; }
 #roots .root span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #roots .root button { height: 28px; padding: 0 10px; font-size: 12px; }
 
-/* 壁纸网格 */
 .card {
   position: relative;
   height: auto;
@@ -356,7 +350,6 @@ button.link:hover { text-decoration: underline; background: none; }
   text-overflow: ellipsis;
 }
 
-/* 壁纸选项 */
 .prop {
   display: grid;
   grid-template-columns: 1fr var(--col-ctrl);
@@ -409,7 +402,6 @@ button.link:hover { text-decoration: underline; background: none; }
   text-overflow: ellipsis;
 }
 
-/* 分组标题（WE 的 group 属性） */
 .prop-group { display: block; padding: 12px 8px 4px; }
 .prop-group-head {
   margin: 0;
@@ -420,7 +412,6 @@ button.link:hover { text-decoration: underline; background: none; }
   color: var(--fg);
 }
 
-/* 滑块：轨道按当前值填充，滑块头统一尺寸 */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -457,7 +448,6 @@ input[type="range"]::-webkit-slider-thumb {
 input[type="range"]:focus { outline: none; }
 input[type="range"]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--accent-dim); }
 
-/* WinUI 开关 */
 input.switch {
   appearance: none;
   width: 40px;
@@ -506,8 +496,6 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
   color: var(--fg-3);
 }
 
-/* ---------------- 设置入口与选项卡 ---------------- */
-
 #gear {
   position: fixed;
   top: 18px;
@@ -531,7 +519,6 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
 #gear:hover { background: var(--card-hover); }
 #gear svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 
-/* 右下角保留一个圆形快捷键 */
 #gear {
   z-index: 50;
   top: auto;
@@ -548,9 +535,6 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
 #gear span { display: none; }
 #gear:hover { opacity: 1; transform: rotate(25deg); }
 
-/* 面板大选项卡 */
-
-/* 壁纸分组（Fluent 2 列表容器） */
 .wallGroup { margin: 0 0 14px; }
 .wallGroupHead {
   display: flex;
@@ -574,11 +558,10 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
   background: rgba(255, 255, 255, .024);
 }
 
-/* 超过 50 张才出现滚动区：WinUI 3 风格的细滚动条，悬停加粗 */
 .wallList.scrollable {
   max-height: var(--wall-max, 430px);
   overflow-y: auto;
-  overscroll-behavior: contain; /* 滚到边界时不再带动外层面板 */
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, .32) transparent;
 }
@@ -601,7 +584,6 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
 .wallList::-webkit-scrollbar-track { background: transparent; }
 .wallMore { margin: 6px 2px 0; }
 
-/* 一言 */
 #hitokoto {
   position: fixed;
   left: 30px;
@@ -624,7 +606,6 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 2px; }
   color: rgba(255, 255, 255, .6);
 }
 
-/* 离屏行/卡片不参与布局与绘制，长列表滚动更顺 */
 .prop {
   content-visibility: auto;
   contain-intrinsic-size: auto 34px;

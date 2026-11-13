@@ -1,6 +1,5 @@
+/* 时钟/日期：时间格式化、字体与布局设置。 */
 "use strict";
-
-/* 时钟：时间 / 日期渲染与外观设置（显隐、字号、粗细、字体、百分比位置）。 */
 
 const CLOCK_FONTS = {
   system: '"Segoe UI Variable Display", "Segoe UI Variable", var(--font)',
@@ -9,14 +8,12 @@ const CLOCK_FONTS = {
   mono: '"Cascadia Mono", Consolas, monospace',
 };
 
-// 百分比夹取到 0–100
 function clockPercent(value, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(100, Math.max(0, number));
 }
 
-// 应用时钟外观与位置
 function applyClock() {
   const el = $("clock");
   if (!el) return;
@@ -34,7 +31,6 @@ function applyClock() {
   if ($("clockYValue")) $("clockYValue").textContent = `${y}%`;
 }
 
-// 导入时钟字体
 async function importClockFont(file) {
   if (!file) return;
   try {
@@ -48,7 +44,6 @@ async function importClockFont(file) {
   }
 }
 
-// 恢复时钟系统字体
 async function clearClockFont() {
   await clearImportedFont("clock");
   state.settings.clockFont = "system";
@@ -57,9 +52,6 @@ async function clearClockFont() {
   if ($("clockFontState")) $("clockFontState").textContent = "已恢复系统字体";
 }
 
-/* ---------------- 时间渲染 ---------------- */
-
-// 渲染时间与日期
 function startClock() {
   const time = $("time");
   const date = $("date");

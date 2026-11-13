@@ -1,11 +1,6 @@
+/* 设置面板：设置项绑定、壁纸列表、属性面板与服务状态展示。 */
 "use strict";
 
-/* 设置面板：面板开合与状态提示、目录列表、所有设置项的绑定与副作用分发、
-   性能自适应与空闲任务。原生能力在 native.js，时钟在 clock.js。 */
-
-/* ---------------- 面板开关 ---------------- */
-
-// 齿轮打开设置面板；关闭后主视图仍是壁纸
 function setPanelOpen(open) {
   const panel = $("panel");
   const willOpen = open === undefined ? !panel.classList.contains("open") : open;
@@ -13,17 +8,15 @@ function setPanelOpen(open) {
   if (!willOpen) return;
   refreshGpu();
   syncBridge();
-  // 面板刚展开时量不到行高，等一帧再对齐滚动区高度
+
   requestAnimationFrame(() => {
     alignAllWallLists();
     setTimeout(alignAllWallLists, 120);
   });
 }
 
-/* ---------------- 状态提示 ---------------- */
-
 let statusTimer = 0;
-// 底部只在切换壁纸时露一下名字，其它过程信息一律只进控制台
+
 function status(text) {
   const el = $("status");
   el.textContent = text;
@@ -32,19 +25,13 @@ function status(text) {
   statusTimer = setTimeout(() => (el.hidden = true), 2000);
 }
 
-// 过程信息只进控制台
 function notice(text) {
-  console.log("[notice]", text);
 }
 
-// 错误只进控制台
 function reportError(error) {
   console.error("[error]", error?.message || error);
 }
 
-/* ---------------- 目录列表 ---------------- */
-
-// 渲染已授权目录列表
 function renderRoots() {
   const box = $("roots");
   box.textContent = "";
@@ -88,16 +75,11 @@ function renderRoots() {
   });
 }
 
-/* ---------------- 设置项绑定 ---------------- */
-
-// 这些设置要按数字存，其余保持字符串/布尔
-
 const NUMERIC_SETTINGS = new Set([
   "fps", "dpr", "brightness", "volume", "rotateEvery", "bridgePort",
   "hitokotoSize", "clockSize", "clockWeight", "clockX", "clockY",
 ]);
 
-// 绑定所有设置项：回填当前值、监听变化、按类型分发副作用
 function bindSettings() {
   applyClock();
 
@@ -107,6 +89,7 @@ function bindSettings() {
     parallax: "parallax", monet: "monet",
     brightness: "brightness", volume: "volume", rotate: "rotate",
     rotateEvery: "rotateEvery", rotateRandom: "rotateRandom",
+    enableWebService: "webService", enableBridgeService: "bridgeService",
     hitokotoShow: "hitokotoShow", hitokotoSize: "hitokotoSize", hitokotoFont: "hitokotoFont",
     clockShow: "clockShow", clockSize: "clockSize", clockWeight: "clockWeight", clockFont: "clockFont", clockX: "clockX", clockY: "clockY",
   };
@@ -124,13 +107,13 @@ function bindSettings() {
       }
       if (key === "fit") applyFit();
       if (key === "parallax") {
-        // 同步壁纸自己的「视差」属性，两边始终一致；再重新装配让深度生效
+
         const pkey = state.parallaxPropKey;
         if (pkey && state.propValues) {
           state.propValues[pkey] = state.settings.parallax;
           propView?.refresh(state.propValues);
           pushProps(state.propValues);
-          // 重新装配会从存储里读属性值，必须先落盘再重装
+
           await saveWallProps(propWallId, state.propValues);
           state.parallaxDirty = false;
         }
@@ -143,6 +126,7 @@ function bindSettings() {
       if (key === "volume") applyVolume();
       if (key === "rotate" || key === "rotateEvery" || key === "rotateRandom") scheduleRotation();
       if (key === "audioSource" || key === "bridgePort") applyAudioSource();
+      if (key === "enableWebService" || key === "enableBridgeService") applyLocalServices();
       if (key === "dpr") state.effectiveDpr = null;
       saveSettings();
       applyLiveSettings();
@@ -151,22 +135,17 @@ function bindSettings() {
 
 }
 
-/* ---------------- 填充与实时设置 ---------------- */
-
-// 应用填充模式
 function applyFit() {
   const map = { cover: "cover", contain: "contain", stretch: "fill" };
   vid.style.objectFit = map[state.settings.fit] || "cover";
   img.style.objectFit = map[state.settings.fit] || "cover";
-}
 
-/* ---------------- 性能自适应 ---------------- */
+  webFrame.contentWindow?.postMessage({ __weFit: { mode: state.settings.fit } }, "*");
+}
 
 const DPR_LADDER = [2, 1.5, 1, 0.75, 0.5];
 let lowFpsTicks = 0;
 
-// 实测：场景壁纸的瓶颈几乎全在渲染分辨率（dpr 1→0.5 可让重场景从 ~12fps 升到 ~41fps），
-// 关后处理/粒子几乎无收益。所以帧率持续偏低时只降分辨率。
 function watchPerformance() {
   setInterval(() => {
     if (!state.current || state.current.type !== "scene" || !state.fps) return;
@@ -189,7 +168,6 @@ function watchPerformance() {
   }, 2000);
 }
 
-// 把画质类设置热更新到引擎
 function applyLiveSettings() {
   if (!state.sceneReady) return;
   const s = state.settings;
@@ -207,16 +185,12 @@ function applyLiveSettings() {
   );
 }
 
-/* ---------------- 面板事件 ---------------- */
-
-// 绑定面板上的所有按钮
 function bindPanel() {
   $("gear").addEventListener("click", () => setPanelOpen());
   $("close").addEventListener("click", () => setPanelOpen(false));
   $("rescan").addEventListener("click", () => rescan().catch(reportError));
   $("openWorkshop").addEventListener("click", openSteamWorkshop);
   $("bridgeStart").addEventListener("click", startBridgeService);
-  $("bridgeAuto").addEventListener("change", toggleBridgeAutostart);
   $("clockImport").addEventListener("click", () => $("clockFile").click());
   $("clockFile").addEventListener("change", (event) => importClockFont(event.target.files?.[0]));
   $("clockClear").addEventListener("click", () => clearClockFont().catch(reportError));
@@ -231,7 +205,6 @@ function bindPanel() {
       const picked = await window.showDirectoryPicker({ mode: "read", id: "we-roots" });
       if (!(await ensurePermission(picked))) return notice("未获得目录读取权限");
 
-      // 选中的可能是 Steam 库、WE 安装目录，或壁纸目录本身：先识别真实布局
       const detected = await detectRoots(picked);
       const additions = detected.length ? detected : [{ handle: picked, label: picked.name }];
 
@@ -245,7 +218,7 @@ function bindPanel() {
               break;
             }
           } catch {
-            /* 句柄失效，忽略 */
+
           }
         }
         if (!exists) {
@@ -265,10 +238,8 @@ function bindPanel() {
   });
 }
 
-/* ---------------- 空闲任务 ---------------- */
-
 let idleTimer = 0;
-// 鼠标静止后隐藏界面元素
+
 function startIdle() {
   const wake = () => {
     document.body.classList.remove("bare");

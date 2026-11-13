@@ -1,21 +1,15 @@
+/* 自定义字体：IndexedDB 存取与 FontFace 注册。 */
 "use strict";
-
-/* 字体槽位：每个组件一个槽位，导入的字体以字节存在 IndexedDB，运行时用 FontFace 注册。 */
-
-/* ---------------- 槽位配置 ---------------- */
 
 const FONT_SLOTS = {
   clock: { key: "font.clock", family: "WE-Clock" },
   hitokoto: { key: "font.hitokoto", family: "WE-Hitokoto" },
 };
 
-// 取槽位配置
 function fontSlot(name) {
   return FONT_SLOTS[name] || FONT_SLOTS.hitokoto;
 }
 
-// 从 IndexedDB 恢复字体
-/* ---------------- 加载已存字体 ---------------- */
 async function loadStoredFont(name) {
   const slot = fontSlot(name);
   try {
@@ -31,8 +25,6 @@ async function loadStoredFont(name) {
   }
 }
 
-// 导入并注册字体
-/* ---------------- 导入与清除 ---------------- */
 async function importFont(name, file) {
   const slot = fontSlot(name);
   const buffer = await file.arrayBuffer();
@@ -43,7 +35,6 @@ async function importFont(name, file) {
   return slot.family;
 }
 
-// 删除已导入字体
 async function clearImportedFont(name) {
   const slot = fontSlot(name);
   await kvSet(slot.key, null);
