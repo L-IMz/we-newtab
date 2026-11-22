@@ -11,11 +11,6 @@ function inferType(project) {
   return "scene";
 }
 
-function rootEntry(item) {
-
-  if (item && typeof item.kind === "string") return { handle: item, label: item.name };
-  return item;
-}
 
 async function mapPool(items, limit, worker) {
   let index = 0;
@@ -226,39 +221,6 @@ function alignAllWallLists() {
     if (heights[index] < 20) return;
     list.style.setProperty("--wall-max", `${wallListMax(heights[index])}px`);
   });
-}
-
-let fsObserver = null;
-let rescanTimer = 0;
-let scanning = false;
-
-function scheduleRescan(delay = 1500) {
-  clearTimeout(rescanTimer);
-  rescanTimer = setTimeout(() => {
-    if (scanning) return scheduleRescan(2000);
-    rescan().catch(() => {});
-  }, delay);
-}
-
-async function startWatcher() {
-  if (!("FileSystemObserver" in window)) return;
-  try {
-    fsObserver?.disconnect();
-  } catch {
-
-  }
-  try {
-    fsObserver = new FileSystemObserver(() => scheduleRescan());
-    for (const item of state.roots) {
-      try {
-        await fsObserver.observe(rootEntry(item).handle, { recursive: true });
-      } catch {
-
-      }
-    }
-  } catch {
-    fsObserver = null;
-  }
 }
 
 const WE_WORKSHOP_URL = "https://steamcommunity.com/app/431960/workshop/";

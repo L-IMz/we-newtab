@@ -70,7 +70,6 @@ const state = {
   webInfo: null,
 };
 
-const SKIP_DIRS = new Set(["node_modules", ".git", "preview", "backup", "cache"]);
 const TYPE_LABEL = { scene: "场景", video: "视频", web: "网页", image: "图片", gif: "GIF", application: "应用" };
 
 function idb() {
@@ -123,10 +122,6 @@ function ratingTier(wall) {
   return "unrated";
 }
 
-function ratingAllowed(wall) {
-  const allow = Array.isArray(state.settings.ratingFilter) ? state.settings.ratingFilter : ["everyone"];
-  return allow.includes(ratingTier(wall));
-}
 
 function ratingAllowSet() {
   const allow = Array.isArray(state.settings.ratingFilter) ? state.settings.ratingFilter : ["everyone"];

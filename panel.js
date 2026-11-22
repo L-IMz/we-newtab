@@ -8,8 +8,7 @@ function setPanelOpen(open) {
   if (!willOpen) return;
   refreshGpu();
   syncBridge();
-  syncPropsCollapse();
-  syncExtCollapse();
+  syncCollapses();
   syncRatingFilter();
 
   requestAnimationFrame(() => {
@@ -82,16 +81,31 @@ function bindRatingFilter() {
   });
 }
 
-function syncPropsCollapse() {
-  const section = $("propsSection");
-  const btn = $("propsToggle");
+function syncCollapse(sectionId, buttonId, textId, settingKey, title) {
+  const section = $(sectionId);
+  const btn = $(buttonId);
   if (!section || !btn) return;
-  const collapsed = !!state.settings.propsCollapsed;
+  const collapsed = !!state.settings[settingKey];
   section.classList.toggle("collapsed", collapsed);
-  const text = $("propsToggleText");
+  const text = $(textId);
   if (text) text.textContent = collapsed ? "展开" : "收起";
   btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  btn.title = collapsed ? "展开壁纸自带设置" : "收起壁纸自带设置";
+  btn.title = (collapsed ? "展开" : "收起") + title;
+}
+
+function bindCollapse(sectionId, buttonId, textId, settingKey, title) {
+  const btn = $(buttonId);
+  if (!btn) return;
+  syncCollapse(sectionId, buttonId, textId, settingKey, title);
+  btn.addEventListener("click", () => {
+    state.settings[settingKey] = !state.settings[settingKey];
+    saveSettings();
+    syncCollapse(sectionId, buttonId, textId, settingKey, title);
+  });
+}
+
+function syncPropsCollapse() {
+  syncCollapse("propsSection", "propsToggle", "propsToggleText", "propsCollapsed", "壁纸自带设置");
   const count = $("propsCount");
   if (count) count.textContent = String(document.querySelectorAll("#props .prop").length);
 }
@@ -107,47 +121,16 @@ function bindPropsCollapse() {
   });
 }
 
-function syncExtCollapse() {
-  const section = $("extSection");
-  const btn = $("extToggle");
-  if (!section || !btn) return;
-  const collapsed = !!state.settings.extSettingsCollapsed;
-  section.classList.toggle("collapsed", collapsed);
-  const text = $("extToggleText");
-  if (text) text.textContent = collapsed ? "展开" : "收起";
-  btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  btn.title = collapsed ? "展开扩展自带设置" : "收起扩展自带设置";
-}
+const COLLAPSES = [
+  ["extSection", "extToggle", "extToggleText", "extSettingsCollapsed", "扩展自带设置"],
+  ["timeSection", "timeToggle", "timeToggleText", "timeCollapsed", "时间显示"],
+  ["hitokotoSection", "hitokotoToggle", "hitokotoToggleText", "hitokotoCollapsed", "一言显示"],
+  ["serviceSection", "serviceToggle", "serviceToggleText", "serviceCollapsed", "本地服务"],
+];
 
-function bindExtCollapse() {
-  const btn = $("extToggle");
-  if (!btn) return;
-  syncExtCollapse();
-  btn.addEventListener("click", () => {
-    state.settings.extSettingsCollapsed = !state.settings.extSettingsCollapsed;
-    saveSettings();
-    syncExtCollapse();
-  });
-}
-
-function bindBarCollapse(sectionId, buttonId, textId, settingKey, title) {
-  const section = $(sectionId);
-  const btn = $(buttonId);
-  if (!section || !btn) return;
-  const sync = () => {
-    const collapsed = !!state.settings[settingKey];
-    section.classList.toggle("collapsed", collapsed);
-    const text = $(textId);
-    if (text) text.textContent = collapsed ? "展开" : "收起";
-    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    btn.title = (collapsed ? "展开" : "收起") + title;
-  };
-  sync();
-  btn.addEventListener("click", () => {
-    state.settings[settingKey] = !state.settings[settingKey];
-    saveSettings();
-    sync();
-  });
+function syncCollapses() {
+  syncPropsCollapse();
+  for (const args of COLLAPSES) syncCollapse(...args);
 }
 
 function bindSettings() {
@@ -285,10 +268,7 @@ function bindPanel() {
   bindGpu();
   bindRatingFilter();
   bindPropsCollapse();
-  bindExtCollapse();
-  bindBarCollapse("timeSection", "timeToggle", "timeToggleText", "timeCollapsed", "时间显示");
-  bindBarCollapse("hitokotoSection", "hitokotoToggle", "hitokotoToggleText", "hitokotoCollapsed", "一言显示");
-  bindBarCollapse("serviceSection", "serviceToggle", "serviceToggleText", "serviceCollapsed", "本地服务");
+  for (const args of COLLAPSES) bindCollapse(...args);
 
   $("addRoot").addEventListener("click", async () => {
     const path = prompt("输入壁纸根目录绝对路径（Steam 库或 WE projects 上级目录）");
