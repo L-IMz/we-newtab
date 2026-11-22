@@ -18,6 +18,14 @@ const DEFAULTS = {
   aa: "fxaa",
   particles: "high",
   post: "high",
+  ratingFilter: ["everyone"],
+  propsCollapsed: false,
+  extSettingsCollapsed: false,
+  timeCollapsed: false,
+  hitokotoCollapsed: false,
+  serviceCollapsed: false,
+  occludePause: true,
+  occludeThreshold: 75,
   fit: "cover",
   rate: 1,
   scripts: true,
@@ -35,18 +43,17 @@ const DEFAULTS = {
   hitokotoCustomName: "",
   brightness: 100,
   volume: 0,
-  audioSource: "off",
+  audioSource: "auto",
   bridgePort: 8765,
   rotate: false,
   rotateEvery: 5,
   rotateRandom: false,
-  enableWebService: false,
-  enableBridgeService: false,
 };
 
 const state = {
   settings: { ...DEFAULTS },
   roots: [],
+  hostRoots: [],
   walls: [],
   current: null,
   thumbs: [],
@@ -95,36 +102,39 @@ async function kvSet(key, value) {
 
 async function loadSettings() {
   const got = await chrome.storage.local.get("settings");
-  state.settings = { ...DEFAULTS, ...(got.settings || {}) };
+  const stored = got.settings || {};
+  state.settings = { ...DEFAULTS, ...stored };
+  if (stored.qualityTuned === 2) {
+    state.settings.aa = "fxaa";
+    state.settings.post = "high";
+    delete state.settings.qualityTuned;
+    chrome.storage.local.set({ settings: state.settings });
+  }
+}
+
+const RATING_TIERS = ["everyone", "pg13", "mature", "unrated"];
+
+function ratingTier(wall) {
+  const raw = String(wall?.project?.contentrating || "").trim();
+  if (!raw) return "unrated";
+  if (/^(everyone|general|g)$/i.test(raw)) return "everyone";
+  if (/^(pg13|pg-13|pg ?13|questionable)$/i.test(raw)) return "pg13";
+  if (/^(mature|adult|adultonly|18\+|r18)$/i.test(raw)) return "mature";
+  return "unrated";
+}
+
+function ratingAllowed(wall) {
+  const allow = Array.isArray(state.settings.ratingFilter) ? state.settings.ratingFilter : ["everyone"];
+  return allow.includes(ratingTier(wall));
+}
+
+function ratingAllowSet() {
+  const allow = Array.isArray(state.settings.ratingFilter) ? state.settings.ratingFilter : ["everyone"];
+  return new Set(allow.filter((tier) => RATING_TIERS.includes(tier)));
 }
 
 function saveSettings() {
   chrome.storage.local.set({ settings: state.settings });
-}
-
-async function permissionOf(handle) {
-  const q = await handle.queryPermission({ mode: "read" });
-  return q;
-}
-
-async function ensurePermission(handle) {
-  if ((await permissionOf(handle)) === "granted") return true;
-  return (await handle.requestPermission({ mode: "read" })) === "granted";
-}
-
-async function dirByPath(root, parts) {
-  let cur = root;
-  for (const part of parts) cur = await cur.getDirectoryHandle(part);
-  return cur;
-}
-
-async function fileInfo(root, path) {
-  const parts = path.split("/").filter(Boolean);
-  const name = parts.pop();
-  const dir = parts.length ? await dirByPath(root, parts) : root;
-  const fh = await dir.getFileHandle(name);
-  const file = await fh.getFile();
-  return { dir, file, name };
 }
 
 async function purgeLegacyCache() {

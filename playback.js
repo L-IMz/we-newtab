@@ -188,6 +188,56 @@ function stopAll() {
   state.sceneAudioTimer = 0;
   pendingScene?.reject(new Error("已切换壁纸"));
   pendingWeb?.reject(new Error("已切换壁纸"));
+  stopOcclusionWatch();
+}
+
+let occlusionTimer = 0;
+let occlusionPaused = false;
+
+function startOcclusionWatch() {
+  if (occlusionTimer) return;
+  occlusionTimer = setInterval(pollOcclusion, 1000);
+}
+
+function stopOcclusionWatch() {
+  clearInterval(occlusionTimer);
+  occlusionTimer = 0;
+  if (occlusionPaused) resumeForOcclusion();
+}
+
+async function pollOcclusion() {
+  if (!state.current || document.hidden || !state.settings.occludePause) return;
+  const rect = {
+    x: window.screenX + (window.outerWidth - window.innerWidth) / 2,
+    y: window.screenY + (window.outerHeight - window.innerHeight),
+    w: window.innerWidth,
+    h: window.innerHeight,
+  };
+  const res = await windowCoverage(rect);
+  if (!res || !res.ok) return;
+  const coverage = Math.max(0, Math.min(1, Number(res.coverage) || 0));
+  if (state.current?.type === "scene" && Array.isArray(res.rects)) {
+    sceneFrame.contentWindow?.postMessage({ t: "occlusion", payload: { occluders: res.rects, epoch: "win", gen: Date.now() } }, "*");
+  }
+  const threshold = Math.max(0.5, Math.min(0.95, (Number(state.settings.occludeThreshold) || 75) / 100));
+  if (coverage >= threshold && !occlusionPaused) pauseForOcclusion();
+  else if (coverage < threshold - 0.05 && occlusionPaused) resumeForOcclusion();
+}
+
+function pauseForOcclusion() {
+  if (occlusionPaused || !state.current) return;
+  occlusionPaused = true;
+  if (state.current.type === "scene") sceneFrame.contentWindow?.postMessage({ t: "pause" }, "*");
+  else if (state.current.type === "video") vid.pause();
+  else if (state.current.type === "web") webFrame.contentWindow?.postMessage({ __wePause: true }, "*");
+}
+
+function resumeForOcclusion() {
+  if (!occlusionPaused) return;
+  occlusionPaused = false;
+  if (state.current?.type === "scene") sceneFrame.contentWindow?.postMessage({ t: "resume" }, "*");
+  else if (state.current?.type === "video" && state.current) vid.play().catch(() => {});
+  else if (state.current?.type === "web") webFrame.contentWindow?.postMessage({ __weResume: true }, "*");
 }
 
 function remountScene() {
@@ -215,12 +265,23 @@ async function play(wall, attempt = 0) {
   }
 }
 
+function hostAssetUrl(wall, path) {
+  const port = state.webPort;
+  if (!port || !wall || !wall.hostId) return "";
+  const tail = String(path || "")
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `http://127.0.0.1:${port}/asset/${encodeURIComponent(wall.hostId)}/${tail}`;
+}
+
 async function playOnce(wall) {
   stopAll();
   state.effectiveDpr = null;
   lowFpsTicks = 0;
 
-  state.current = { id: wall.id, type: wall.type, title: wall.title, dir: wall.dir };
+  state.current = { id: wall.id, hostId: wall.hostId || "", type: wall.type, title: wall.title, dir: wall.dir };
   state.sceneAudioReady = false;
   clearTimeout(state.sceneAudioTimer);
   state.sceneAudioTimer = 0;
@@ -251,14 +312,67 @@ async function playOnce(wall) {
   applyVolume();
   scheduleRotation();
   applyAudioSource();
+  startOcclusionWatch();
+}
+
+let displayHzCache = 0;
+
+// 实测显示器刷新率：rAF 间隔中位数；一次性缓存
+async function displayHz() {
+  if (displayHzCache) return displayHzCache;
+  const samples = [];
+  await new Promise((resolve) => {
+    let last = 0;
+    let count = 0;
+    const tick = (now) => {
+      if (last) samples.push(now - last);
+      last = now;
+      count += 1;
+      if (count < 90) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  if (!samples.length) return 60;
+  samples.sort((a, b) => a - b);
+  const median = samples[Math.floor(samples.length / 2)];
+  const hz = Math.round(1000 / Math.max(1, median));
+  displayHzCache = Math.max(24, Math.min(240, hz || 60));
+  return displayHzCache;
+}
+
+// 视频壁纸先播原片，后台转码好后再无缝换到限帧版（保持 currentTime）
+async function warmVideoTranscode(wall, fileName, originalUrl) {
+  if (state.settings.videoTranscode === false) return;
+  const hz = await displayHz();
+  for (let i = 0; i < 120; i++) {
+    const prep = await videoPrepare(wall.hostId, fileName, hz);
+    if (prep && prep.state === "original") return;
+    if (state.current?.id !== wall.id) return;
+    if (prep && prep.state === "ready" && prep.url) {
+      if (prep.url === originalUrl) return;
+      const at = vid.currentTime || 0;
+      const wasPlaying = !vid.paused;
+      vid.src = prep.url;
+      vid.currentTime = at;
+      if (wasPlaying) vid.play().catch(() => {});
+      return;
+    }
+    if (!prep || prep.ok === false) return;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 
 async function playMedia(wall, kind) {
   const fileName = String(wall.project.file || "");
-  const { file: blob } = await fileInfo(wall.dir, fileName);
-
-  const url = URL.createObjectURL(blob);
-  state.mediaUrl = url;
+  let url;
+  if (wall.hostId) {
+    url = hostAssetUrl(wall, fileName);
+    state.hostMedia = true;
+    if (kind === "video") warmVideoTranscode(wall, fileName, url);
+  } else {
+    throw new Error("缺少宿主壁纸标识");
+  }
 
   if (kind === "video") {
     const level = Math.max(0, Math.min(100, Number(state.settings.volume) || 0)) / 100;
@@ -305,7 +419,9 @@ async function playWeb(wall) {
     webFrame.contentWindow?.postMessage({ __weFit: { mode: state.settings.fit } }, "*");
     webFrame.contentWindow?.postMessage({ __weVolume: { value: Math.max(0, Math.min(100, Number(state.settings.volume) || 0)) / 100 } }, "*");
   };
-  webFrame.src = `http://127.0.0.1:${port}/wall/${encodeURIComponent(name)}/${tail}`;
+  webFrame.src = wall.hostId
+    ? `http://127.0.0.1:${port}/asset/${encodeURIComponent(wall.hostId)}/${tail}`
+    : `http://127.0.0.1:${port}/wall/${encodeURIComponent(name)}/${tail}`;
   webFrame.classList.add("on");
   status(wall.title);
   await ready;
@@ -391,52 +507,46 @@ function waitSceneBoot() {
 }
 
 async function scenePayload(wall) {
-  const dir = wall.dir;
-  const declared = String(wall.project.file || "");
-
-  let entry = null;
-
-  if (declared.toLowerCase().endsWith(".json")) {
-    try {
-      const { file } = await fileInfo(dir, declared);
-      if (file.size > 0) entry = declared;
-    } catch {
-      entry = null;
+  if (wall.hostId) {
+    const declared = String(wall.project.file || "");
+    let entry = null;
+    if (declared.toLowerCase().endsWith(".json")) {
+      try {
+        const res = await fetch(hostAssetUrl(wall, declared));
+        if (res.ok) entry = declared;
+      } catch {
+        entry = null;
+      }
     }
+    let pkgFile = null;
+    if (!entry) {
+      const res = await fetch(hostAssetUrl(wall, "scene.pkg"));
+      if (!res.ok) throw new Error("缺少 scene.pkg");
+      pkgFile = new File([await res.blob()], "scene.pkg");
+    }
+    return {
+      t: "mount",
+      key: `host/${wall.hostId}`,
+      title: wall.title,
+      pkgFile,
+      entry,
+      project: wall.project,
+      props: state.propValues || {},
+      opts: {
+        fps: Number(state.settings.fps) || 30,
+        dpr: state.fallbackQuality ? 0.75 : state.effectiveDpr ?? (Number(state.settings.dpr) || 0),
+        fit: state.settings.fit,
+        scripts: !!state.settings.scripts,
+        parallax: state.settings.parallax !== false,
+        volume: (Number(state.settings.volume) || 0) / 100,
+        webPort: state.webPort || 0,
+        quality: state.fallbackQuality
+          ? { antiAliasing: false, particles: false, postProcessing: false }
+          : { antiAliasing: state.settings.aa, particles: state.settings.particles, postProcessing: state.settings.post },
+      },
+    };
   }
 
-  let pkgFile = null;
-  if (!entry) {
-    if (!dir) throw new Error("缺少壁纸目录");
-    const { file } = await fileInfo(dir, "scene.pkg");
-    pkgFile = file;
-  }
-
-  return {
-    t: "mount",
-    key: `${wall.root}/${wall.name}`,
-    title: wall.title,
-    pkgFile,
-    entry,
-    project: wall.project,
-    props: state.propValues || {},
-    opts: {
-      fps: Number(state.settings.fps) || 30,
-      dpr: state.fallbackQuality ? 0.75 : state.effectiveDpr ?? (Number(state.settings.dpr) || 0),
-      fit: state.settings.fit,
-      scripts: !!state.settings.scripts,
-      parallax: state.settings.parallax !== false,
-      volume: (Number(state.settings.volume) || 0) / 100,
-      webPort: state.webPort || 0,
-      quality: state.fallbackQuality
-        ? { antiAliasing: false, particles: false, postProcessing: false }
-        : {
-            antiAliasing: state.settings.aa,
-            particles: state.settings.particles,
-            postProcessing: state.settings.post,
-          },
-    },
-  };
 }
 
 async function playScene(wall) {
@@ -460,15 +570,15 @@ window.addEventListener("message", async (event) => {
   if (!data || data.t !== "read") return;
 
   const reqId = data.id;
-  const dir = state.current?.dir || null;
-
   let file = null;
-  try {
-    if (dir) ({ file } = await fileInfo(dir, data.path));
-  } catch {
-    file = null;
+  if (state.current?.hostId && data.path) {
+    try {
+      const res = await fetch(hostAssetUrl(state.current, data.path));
+      if (res.ok) file = new File([await res.blob()], String(data.path).split("/").pop());
+    } catch {
+      /* 忽略 */
+    }
   }
-
   if (!file && data.path && /^fonts\//i.test(data.path) && state.webPort) {
     try {
       const name = data.path.split("/").pop();
@@ -546,7 +656,8 @@ function scheduleRotation() {
   const minutes = Math.max(1, Number(state.settings.rotateEvery) || 5);
   rotateTimer = setTimeout(() => {
     if (!state.settings.rotate || state.walls.length < 2) return;
-    const list = state.walls;
+    const allow = ratingAllowSet();
+    const list = state.walls.filter((wall) => allow.has(wall.rating));
     let next = null;
     if (state.settings.rotateRandom) {
       if (list.length > 1) {
@@ -631,6 +742,39 @@ function pushBins(bands) {
   for (let i = 0; i < 64; i++) left[i] = Math.max(0, Math.min(1, (bands[i] || 0) / 255));
   const frame = activeFrameOrNull();
   if (frame) frame.contentWindow?.postMessage({ t: "audio", left, right: left }, "*");
+}
+
+let dshAudioTimer = 0;
+
+function stopDshAudio() {
+  clearInterval(dshAudioTimer);
+  dshAudioTimer = 0;
+  activeFrameOrNull()?.contentWindow?.postMessage({ t: "audio", off: true }, "*");
+}
+
+async function startDshAudio() {
+  stopDshAudio();
+  const port = state.webPort || 43197;
+  const base = `http://127.0.0.1:${port}/dsh/spectrum`;
+  try {
+    const probe = await fetch(base, { cache: "no-store" });
+    const json = await probe.json();
+    if (!probe.ok || !json || json.ok === false || json.running !== true) throw new Error("DSH media-bridge 未运行");
+  } catch (error) {
+    notice(`DSH 音频不可用：${error.message || error}，改用本机 media-bridge`);
+    await startBridge();
+    return;
+  }
+  dshAudioTimer = setInterval(async () => {
+    if (document.hidden) return;
+    try {
+      const res = await fetch(base, { cache: "no-store" });
+      const json = await res.json();
+      if (Array.isArray(json.bands)) pushBins(json.bands);
+    } catch {
+      /* 下一轮再试 */
+    }
+  }, 50);
 }
 
 function stopBridge() {
@@ -734,6 +878,7 @@ async function startBridge() {
 function stopAudioSources() {
   stopMic();
   stopBridge();
+  stopDshAudio();
 }
 
 async function applyAudioSource() {
@@ -741,6 +886,8 @@ async function applyAudioSource() {
   stopAudioSources();
   const source = state.settings.audioSource;
   if (source === "mic") await startMic();
-  else if (source === "bridge") await startBridge();
+  else if (source !== "off" && (await dshAvailable())) await startDshAudio();
+  else if (source === "bridge" || source === "auto") await startBridge();
+  else if (source === "dsh") await startDshAudio();
   else activeFrameOrNull()?.contentWindow?.postMessage({ t: "audio", off: true }, "*");
 }

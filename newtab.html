@@ -51,17 +51,44 @@
 
     <section>
       <h2>壁纸库 <span id="count" class="badge">0</span></h2>
+      <div class="ratingRow">
+        <span class="ratingLabel">内容分级</span>
+        <label class="check"><input type="checkbox" class="ratingFilter" value="everyone" checked> 全年龄</label>
+        <label class="check"><input type="checkbox" class="ratingFilter" value="pg13"> PG13</label>
+        <label class="check"><input type="checkbox" class="ratingFilter" value="mature"> 成人</label>
+        <label class="check"><input type="checkbox" class="ratingFilter" value="unrated"> 未分级</label>
+      </div>
       <div id="walls"></div>
     </section>
 
-    <section id="propsSection" hidden>
-      <h2>壁纸选项 <button id="propsReset" class="link">重置</button></h2>
+    <div class="monetRow">
       <label class="check"><input type="checkbox" id="monet"> 从壁纸取色（莫奈）</label>
+    </div>
+
+    <section id="propsSection" hidden>
+      <h2 class="propsHead">
+        <span>壁纸选项 <span id="propsCount" class="badge">0</span></span>
+        <button id="propsReset" class="link">重置</button>
+      </h2>
+      <button id="propsToggle" class="propsBar" type="button" aria-expanded="true">
+        <span class="propsBarTitle">壁纸自带设置</span>
+        <span class="propsBarRight">
+          <span id="propsToggleText">收起</span>
+          <svg class="propsChevron" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5L6 8.5L10 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </button>
       <div id="props"></div>
     </section>
 
-    <section>
-      <h2>时间</h2>
+    <section id="timeSection">
+      <h2 class="propsHead"><span>时间</span></h2>
+      <button id="timeToggle" class="propsBar" type="button" aria-expanded="true">
+        <span class="propsBarTitle">时间显示</span>
+        <span class="propsBarRight"><span id="timeToggleText">收起</span>
+          <svg class="propsChevron" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5L6 8.5L10 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </button>
+      <div id="timeBody">
       <label class="check"><input type="checkbox" id="clockShow"> 在壁纸上显示时间</label>
       <label>字号
         <input id="clockSize" type="range" min="32" max="240" step="1">
@@ -91,10 +118,18 @@
         <span class="slider-field"><input id="clockY" type="range" min="0" max="100" step="0.5"><span id="clockYValue" class="unit">42%</span></span>
       </label>
       <p class="hint">X / Y 都按视口百分比算，50% / 42% 是水平居中偏上</p>
+      </div>
     </section>
 
-    <section>
-      <h2>一言</h2>
+    <section id="hitokotoSection">
+      <h2 class="propsHead"><span>一言</span></h2>
+      <button id="hitokotoToggle" class="propsBar" type="button" aria-expanded="true">
+        <span class="propsBarTitle">一言显示</span>
+        <span class="propsBarRight"><span id="hitokotoToggleText">收起</span>
+          <svg class="propsChevron" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5L6 8.5L10 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </button>
+      <div id="hitokotoBody">
       <label class="check"><input type="checkbox" id="hitokotoShow"> 在左下角显示一言</label>
       <label>字号
         <input id="hitokotoSize" type="range" min="10" max="32" step="1">
@@ -115,10 +150,19 @@
       </div>
       <input id="hitokotoFile" type="file" accept=".ttf,.otf,.woff,.woff2" hidden>
       <p class="hint" id="hitokotoState">支持 ttf / otf / woff / woff2；字体只存在本机 IndexedDB</p>
+      </div>
     </section>
 
-    <section>
-      <h2>动态效果 <span id="fpsNow" class="badge">—</span></h2>
+    <section id="extSection">
+      <h2 class="propsHead"><span>扩展自带设置 <span id="fpsNow" class="badge">—</span></span></h2>
+      <button id="extToggle" class="propsBar" type="button" aria-expanded="true">
+        <span class="propsBarTitle">扩展内置参数</span>
+        <span class="propsBarRight">
+          <span id="extToggleText">收起</span>
+          <svg class="propsChevron" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5L6 8.5L10 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </button>
+      <div id="extBody">
       <label>帧率上限
         <select id="fps">
           <option value="30">30 FPS</option>
@@ -162,6 +206,10 @@
           <option value="off">关闭</option>
         </select>
       </label>
+      <label class="check"><input type="checkbox" id="occludePause"> 被其它窗口遮挡时暂停壁纸</label>
+      <label>遮挡阈值
+        <span class="slider-field"><input type="range" id="occludeThreshold" min="50" max="95" step="5"><span id="occludeVal" class="unit">75%</span></span>
+      </label>
       <label>填充模式
         <select id="fit">
           <option value="cover">铺满（裁切）</option>
@@ -185,9 +233,11 @@
       <label class="check"><input type="checkbox" id="parallax"> 鼠标视差（相机跟随指针）</label>
       <label>音频响应
         <select id="audioSource">
+          <option value="auto">自动（优先 DSH）</option>
           <option value="off">关闭</option>
           <option value="mic">麦克风</option>
-          <option value="bridge">系统音频（media-bridge）</option>
+          <option value="bridge">系统音频（本机 media-bridge）</option>
+          <option value="dsh">与 DSH 共用（DSH 的 media-bridge）</option>
         </select>
       </label>
       <label class="check"><input type="checkbox" id="rotate"> 自动轮换壁纸</label>
@@ -200,18 +250,26 @@
         </select>
       </label>
       <label class="check"><input type="checkbox" id="rotateRandom"> 随机顺序</label>
+      </div>
     </section>
 
-    <section>
-      <h2>本地服务</h2>
-      <p class="hint">两项服务随 Edge 启动：每次打开新标签页时自动拉起，关掉开关则停止。</p>
-      <label class="check"><input type="checkbox" id="webService"> 网页壁纸服务（本地 http 源）</label>
-      <label class="check"><input type="checkbox" id="bridgeService"> 系统音频 media-bridge</label>
-      <label>桥接端口<input id="bridgePort" type="number" min="1024" max="65535" step="1" value="8765"></label>
-      <div class="row"><button id="bridgeStart">立即启动 media-bridge</button></div>
-      <p class="hint" id="serviceState">未启用</p>
+    <section id="serviceSection">
+      <h2 class="propsHead"><span>本地服务</span></h2>
+      <button id="serviceToggle" class="propsBar" type="button" aria-expanded="true">
+        <span class="propsBarTitle">音频端口与本地服务</span>
+        <span class="propsBarRight"><span id="serviceToggleText">收起</span>
+          <svg class="propsChevron" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5L6 8.5L10 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </button>
+      <div id="serviceBody">
+      <p class="hint">后台常驻：网页壁纸本地 http 源与 media-bridge 由原生宿主自动保持运行，无需手动启停。</p>
+      <label>音频端口
+        <span class="slider-field"><input id="bridgePort" type="number" min="1024" max="65535" step="1" value="8765"><button id="bridgeScanPort" class="link" type="button">扫描</button></span>
+      </label>
+      <p class="hint" id="serviceState">启动中…</p>
       <p class="hint" id="bridgeState">服务状态未知</p>
       <p class="hint">media-bridge 默认在 <code>C:\Program Files\media-bridge-win32-x64.exe</code> 找，找不到再退回 Downloads / 桌面。</p>
+      </div>
     </section>
 
     <section>

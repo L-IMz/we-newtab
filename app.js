@@ -39,15 +39,7 @@ async function main() {
   applyFit();
   vid.playbackRate = Number(state.settings.rate) || 1;
 
-  const roots = (await kvGet("roots")) || [];
-  state.roots = roots;
   renderRoots();
-  startWatcher();
-
-  if (!roots.length) {
-    notice("先添加 Wallpaper Engine 壁纸目录");
-    return;
-  }
 
   if (document.hidden) {
     const resume = async () => {
@@ -61,6 +53,7 @@ async function main() {
   }
 
   await rescan();
+  renderRoots();
   await restoreLastWall();
 }
 

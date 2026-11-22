@@ -371,7 +371,7 @@ async function mountScene(msg) {
       media: mediaSource,
       autoplay: true,
       volume: Math.max(0, Math.min(1, Number(opts.volume) || 0)),
-      autoQuality: true,
+      autoQuality: false,
       mountTimeoutMs: 30000,
     });
   } catch (error) {
@@ -467,6 +467,11 @@ window.addEventListener("message", (event) => {
     }
   }
 
+  if (data.t === "occlusion" && data.payload) {
+    try { instance?.setOcclusion?.(data.payload); } catch { /* 忽略 */ }
+  }
+  if (data.t === "pause") { try { instance?.pause(); } catch { /* 忽略 */ } }
+  if (data.t === "resume") { try { instance?.resume(); } catch { /* 忽略 */ } }
   if (data.t === "stop") destroy();
 
   if (data.t === "ping") send({ t: "pong" });

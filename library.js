@@ -1,120 +1,6 @@
 /* 壁纸库：扫描 Steam 库/创意工坊目录，解析 project.json，生成分类与封面。 */
 "use strict";
 
-const LAYOUT_HINTS = [
-  ["steamapps", "workshop", "content", "431960"],
-  ["steamapps", "common", "wallpaper_engine"],
-  ["steamapps", "common", "wallpaper_engine", "projects"],
-  ["common", "wallpaper_engine"],
-  ["common", "wallpaper_engine", "projects"],
-  ["workshop", "content", "431960"],
-  ["steamapps"],
-  ["wallpaper_engine"],
-  ["wallpaper_engine", "projects"],
-  ["projects"],
-];
-
-function lowerMap(entries) {
-  const map = new Map();
-  for (const entry of entries) map.set(entry.name.toLowerCase(), entry);
-  return map;
-}
-
-async function entriesOf(dir) {
-  const out = [];
-  try {
-    for await (const entry of dir.values()) out.push(entry);
-  } catch {
-
-  }
-  return out;
-}
-
-async function resolveChain(dir, parts) {
-  let current = dir;
-  for (const part of parts) {
-    const entry = lowerMap(await entriesOf(current)).get(part.toLowerCase());
-    if (!entry || entry.kind !== "directory") return null;
-    current = entry;
-  }
-  return current;
-}
-
-async function detectRoots(handle) {
-  const found = [];
-  const seen = new Set();
-
-  const push = (dir, label) => {
-    if (!dir) return;
-    const key = label || dir.name;
-    if (seen.has(key)) return;
-    seen.add(key);
-    found.push({ handle: dir, label: key });
-  };
-
-  for (const parts of LAYOUT_HINTS) {
-    const hit = await resolveChain(handle, parts);
-    if (hit) push(hit, parts.join("/"));
-  }
-  return found;
-}
-
-async function mapLimit(items, limit, worker) {
-  let index = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (index < items.length) {
-      const current = index++;
-      await worker(items[current], current);
-    }
-  });
-  await Promise.all(runners);
-}
-
-let projectCache = null;
-let projectCacheDirty = false;
-
-async function loadProjectCache() {
-  if (!projectCache) projectCache = (await kvGet("projectCache").catch(() => null)) || {};
-  return projectCache;
-}
-
-function flushProjectCache() {
-  if (!projectCache || !projectCacheDirty) return;
-  projectCacheDirty = false;
-  kvSet("projectCache", projectCache).catch(() => {});
-}
-
-async function scanDir(dir, depth, root, out) {
-  const entries = await entriesOf(dir);
-  const cache = await loadProjectCache();
-
-  const project = entries.find((e) => e.kind === "file" && e.name === "project.json");
-  if (project) {
-    try {
-      const file = await project.getFile();
-      const key = `${root}/${dir.name}`;
-      const hit = cache[key];
-      let json;
-      if (hit && hit.mtime === file.lastModified && hit.size === file.size) {
-        json = hit.project;
-      } else {
-        json = JSON.parse(await file.text());
-        cache[key] = { mtime: file.lastModified, size: file.size, project: json };
-        projectCacheDirty = true;
-      }
-      out.push({ dir, name: dir.name, root, project: json });
-    } catch {
-
-    }
-  }
-
-  if (depth <= 0) return;
-  const dirs = entries.filter(
-    (entry) => entry.kind === "directory" && !SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")
-  );
-  await mapLimit(dirs, 8, (entry) => scanDir(entry, depth - 1, root, out));
-}
-
 function inferType(project) {
   const raw = String(project.type || "").toLowerCase();
   if (TYPE_LABEL[raw]) return raw;
@@ -131,66 +17,78 @@ function rootEntry(item) {
   return item;
 }
 
-async function rescan() {
-  if (scanning) return;
-  scanning = true;
-  try {
-    const found = [];
-    const roots = state.roots.filter(Boolean).map(rootEntry);
-    if (!roots.length) {
-      renderRoots();
+async function mapPool(items, limit, worker) {
+  let index = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      await worker(items[current], current);
+    }
+  });
+  await Promise.all(runners);
+}
+
+let hostScanCache = null;
+let hostScanAt = 0;
+
+async function rescan(force) {
+  const fresh = !force && hostScanCache && Date.now() - hostScanAt < 30000;
+  const hostScan = fresh ? hostScanCache : await scanWalls().catch(() => null);
+  if (!fresh && hostScan) {
+    hostScanCache = hostScan;
+    hostScanAt = Date.now();
+  }
+  if (hostScan && Array.isArray(hostScan.roots)) state.hostRoots = hostScan.roots;
+  if (hostScan && hostScan.entries && hostScan.entries.length) {
+    const port = await ensureWebService();
+    const walls = new Array(hostScan.entries.length).fill(null);
+    await mapPool(hostScan.entries, 12, async (item, index) => {
+      const base = `http://127.0.0.1:${port}/asset/${encodeURIComponent(item.hostId)}`;
+      let project = item.project || null;
+      if (!project) {
+        try {
+          const res = await fetch(`${base}/project.json`);
+          if (res.ok) project = await res.json();
+        } catch {
+          project = null;
+        }
+      }
+      if (!project) return;
+      walls[index] = {
+        id: `host:${item.hostId}`,
+        hostId: item.hostId,
+        name: String(item.dir || "").split(/[\\/]/).pop(),
+        title: project.title || item.title || item.dir,
+        type: inferType(project),
+        dir: null,
+        root: "host",
+        project,
+        previewRel: project.preview || item.preview || "",
+        rating: ratingTier({ project }),
+      };
+    });
+    const validWalls = walls.filter(Boolean);
+    if (validWalls.length) {
+      state.walls = validWalls.sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
+      await renderWalls();
+      notice(`找到 ${validWalls.length} 张壁纸（宿主扫描）`);
       return;
     }
-
-    let skipped = 0;
-    for (let i = 0; i < roots.length; i++) {
-      const { handle, label } = roots[i];
-      notice(`扫描目录 ${i + 1}/${roots.length}：${label}…`);
-      if ((await permissionOf(handle)) !== "granted") {
-        skipped++;
-        continue;
-      }
-      await scanDir(handle, 5, label, found);
-    }
-
-    flushProjectCache();
-
-    state.walls = found
-      .map((w) => ({
-
-        id: `${w.root}/${w.name}`,
-        title: w.project.title || w.name,
-        type: inferType(w.project),
-        dir: w.dir,
-        root: w.root,
-        project: w.project,
-      }))
-      .sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
-
-    await renderWalls();
-    if (skipped) notice(`${skipped} 个目录未授权，点击「授权」后重新扫描`);
-    else
-      notice(
-        found.length
-          ? `找到 ${found.length} 张壁纸`
-          : "未找到壁纸。确认选择的是 projects 或 431960 目录"
-      );
-  } finally {
-    scanning = false;
   }
+  // 宿主扫描不可用：不再回退旧 FSA 扫描（旧实现已停用）
+  state.walls = [];
+  await renderWalls();
+  notice("未发现壁纸：请确认已安装辅助程序，或添加壁纸目录");
+  return;
+
 }
 
 async function previewUrl(wall) {
-  const name = wall.project.preview;
-  if (!name) return null;
-  try {
-    const { file } = await fileInfo(wall.dir, name);
-    const url = URL.createObjectURL(file);
-    state.thumbs.push(url);
-    return url;
-  } catch {
-    return null;
+  if (wall.hostId) {
+    const port = state.webPort;
+    return port ? `http://127.0.0.1:${port}/thumb/${encodeURIComponent(wall.hostId)}` : "";
   }
+  return null;
 }
 
 function clearThumbs() {
@@ -260,12 +158,14 @@ function wallCard(wall) {
 async function renderWalls() {
   const box = $("walls");
   box.textContent = "";
-  $("count").textContent = String(state.walls.length);
+  const allow = ratingAllowSet();
+  const visible = state.walls.filter((wall) => allow.has(wall.rating));
+  $("count").textContent = String(visible.length);
   clearThumbs();
   const observer = ensurePreviewObserver();
 
   for (const group of WALL_GROUPS) {
-    const items = state.walls.filter((wall) => wall.type === group.type);
+    const items = visible.filter((wall) => wall.type === group.type);
     if (!items.length) continue;
 
     const section = document.createElement("div");

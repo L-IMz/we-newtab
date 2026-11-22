@@ -8,6 +8,9 @@ function setPanelOpen(open) {
   if (!willOpen) return;
   refreshGpu();
   syncBridge();
+  syncPropsCollapse();
+  syncExtCollapse();
+  syncRatingFilter();
 
   requestAnimationFrame(() => {
     alignAllWallLists();
@@ -35,50 +38,117 @@ function reportError(error) {
 function renderRoots() {
   const box = $("roots");
   box.textContent = "";
-  if (!state.roots.length) {
+  const roots = state.hostRoots || [];
+  if (!roots.length) {
     const tip = document.createElement("p");
     tip.className = "hint";
-    tip.textContent = "尚未添加目录。";
+    tip.textContent = "宿主尚未发现壁纸目录。";
     box.appendChild(tip);
     return;
   }
-  state.roots.forEach((item, index) => {
-    const { handle, label } = rootEntry(item);
-    if (!handle) return;
+  for (const path of roots) {
     const row = document.createElement("div");
     row.className = "root";
-
     const name = document.createElement("span");
-    name.textContent = label || handle.name;
-    name.title = label || handle.name;
+    name.textContent = path;
+    name.title = path;
     row.appendChild(name);
-
-    const grant = document.createElement("button");
-    grant.textContent = "授权";
-    grant.addEventListener("click", async () => {
-      const ok = await ensurePermission(handle);
-      notice(ok ? `${label || handle.name} 已授权` : `${label || handle.name} 未授权`);
-      await rescan();
-    });
-    row.appendChild(grant);
-
-    const del = document.createElement("button");
-    del.textContent = "移除";
-    del.addEventListener("click", async () => {
-      state.roots.splice(index, 1);
-      await kvSet("roots", state.roots);
-      renderRoots();
-      await rescan();
-    });
-    row.appendChild(del);
     box.appendChild(row);
-  });
+  }
 }
 
 const NUMERIC_SETTINGS = new Set([
   "fps", "dpr", "brightness", "volume", "rotateEvery", "bridgePort",
-  "hitokotoSize", "clockSize", "clockWeight", "clockX", "clockY",
+  "hitokotoSize", "clockSize", "clockWeight", "clockX", "clockY", "occludeThreshold",
 ]);
+
+function syncRatingFilter() {
+  const allow = ratingAllowSet();
+  document.querySelectorAll(".ratingFilter").forEach((el) => {
+    el.checked = allow.has(el.value);
+  });
+}
+
+function bindRatingFilter() {
+  syncRatingFilter();
+  document.querySelectorAll(".ratingFilter").forEach((el) => {
+    el.addEventListener("change", async () => {
+      const picked = [...document.querySelectorAll(".ratingFilter")].filter((x) => x.checked).map((x) => x.value);
+      state.settings.ratingFilter = picked.length ? picked : ["everyone"];
+      saveSettings();
+      await renderWalls();
+      scheduleRotation();
+    });
+  });
+}
+
+function syncPropsCollapse() {
+  const section = $("propsSection");
+  const btn = $("propsToggle");
+  if (!section || !btn) return;
+  const collapsed = !!state.settings.propsCollapsed;
+  section.classList.toggle("collapsed", collapsed);
+  const text = $("propsToggleText");
+  if (text) text.textContent = collapsed ? "展开" : "收起";
+  btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  btn.title = collapsed ? "展开壁纸自带设置" : "收起壁纸自带设置";
+  const count = $("propsCount");
+  if (count) count.textContent = String(document.querySelectorAll("#props .prop").length);
+}
+
+function bindPropsCollapse() {
+  const btn = $("propsToggle");
+  if (!btn) return;
+  syncPropsCollapse();
+  btn.addEventListener("click", () => {
+    state.settings.propsCollapsed = !state.settings.propsCollapsed;
+    saveSettings();
+    syncPropsCollapse();
+  });
+}
+
+function syncExtCollapse() {
+  const section = $("extSection");
+  const btn = $("extToggle");
+  if (!section || !btn) return;
+  const collapsed = !!state.settings.extSettingsCollapsed;
+  section.classList.toggle("collapsed", collapsed);
+  const text = $("extToggleText");
+  if (text) text.textContent = collapsed ? "展开" : "收起";
+  btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  btn.title = collapsed ? "展开扩展自带设置" : "收起扩展自带设置";
+}
+
+function bindExtCollapse() {
+  const btn = $("extToggle");
+  if (!btn) return;
+  syncExtCollapse();
+  btn.addEventListener("click", () => {
+    state.settings.extSettingsCollapsed = !state.settings.extSettingsCollapsed;
+    saveSettings();
+    syncExtCollapse();
+  });
+}
+
+function bindBarCollapse(sectionId, buttonId, textId, settingKey, title) {
+  const section = $(sectionId);
+  const btn = $(buttonId);
+  if (!section || !btn) return;
+  const sync = () => {
+    const collapsed = !!state.settings[settingKey];
+    section.classList.toggle("collapsed", collapsed);
+    const text = $(textId);
+    if (text) text.textContent = collapsed ? "展开" : "收起";
+    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    btn.title = (collapsed ? "展开" : "收起") + title;
+  };
+  sync();
+  btn.addEventListener("click", () => {
+    state.settings[settingKey] = !state.settings[settingKey];
+    saveSettings();
+    sync();
+  });
+}
 
 function bindSettings() {
   applyClock();
@@ -89,7 +159,7 @@ function bindSettings() {
     parallax: "parallax", monet: "monet",
     brightness: "brightness", volume: "volume", rotate: "rotate",
     rotateEvery: "rotateEvery", rotateRandom: "rotateRandom",
-    enableWebService: "webService", enableBridgeService: "bridgeService",
+    occludePause: "occludePause", occludeThreshold: "occludeThreshold",
     hitokotoShow: "hitokotoShow", hitokotoSize: "hitokotoSize", hitokotoFont: "hitokotoFont",
     clockShow: "clockShow", clockSize: "clockSize", clockWeight: "clockWeight", clockFont: "clockFont", clockX: "clockX", clockY: "clockY",
   };
@@ -104,6 +174,10 @@ function bindSettings() {
       if (key === "rate") {
         state.settings.rate = Number(state.settings.rate) || 1;
         vid.playbackRate = state.settings.rate;
+      }
+      if (key === "occludeThreshold") {
+        const label = $("occludeVal");
+        if (label) label.textContent = `${state.settings.occludeThreshold}%`;
       }
       if (key === "fit") applyFit();
       if (key === "parallax") {
@@ -126,7 +200,6 @@ function bindSettings() {
       if (key === "volume") applyVolume();
       if (key === "rotate" || key === "rotateEvery" || key === "rotateRandom") scheduleRotation();
       if (key === "audioSource" || key === "bridgePort") applyAudioSource();
-      if (key === "enableWebService" || key === "enableBridgeService") applyLocalServices();
       if (key === "dpr") state.effectiveDpr = null;
       saveSettings();
       applyLiveSettings();
@@ -188,9 +261,20 @@ function applyLiveSettings() {
 function bindPanel() {
   $("gear").addEventListener("click", () => setPanelOpen());
   $("close").addEventListener("click", () => setPanelOpen(false));
-  $("rescan").addEventListener("click", () => rescan().catch(reportError));
+  $("rescan").addEventListener("click", () => rescan(true).catch(reportError));
+  $("bridgeScanPort").addEventListener("click", async () => {
+    const scan = await bridgePortScan();
+    if (scan && scan.port) {
+      state.settings.bridgePort = scan.port;
+      $("bridgePort").value = String(scan.port);
+      saveSettings();
+      notice(`发现 media-bridge 端口 ${scan.port}`);
+      await syncBridge(true);
+    } else {
+      notice("未发现运行中的 media-bridge 端口（8765–8772）");
+    }
+  });
   $("openWorkshop").addEventListener("click", openSteamWorkshop);
-  $("bridgeStart").addEventListener("click", startBridgeService);
   $("clockImport").addEventListener("click", () => $("clockFile").click());
   $("clockFile").addEventListener("change", (event) => importClockFont(event.target.files?.[0]));
   $("clockClear").addEventListener("click", () => clearClockFont().catch(reportError));
@@ -199,42 +283,20 @@ function bindPanel() {
   $("hitokotoClear").addEventListener("click", () => clearHitokotoFont().catch(reportError));
   $("hitokotoNext").addEventListener("click", () => renderHitokoto(true));
   bindGpu();
+  bindRatingFilter();
+  bindPropsCollapse();
+  bindExtCollapse();
+  bindBarCollapse("timeSection", "timeToggle", "timeToggleText", "timeCollapsed", "时间显示");
+  bindBarCollapse("hitokotoSection", "hitokotoToggle", "hitokotoToggleText", "hitokotoCollapsed", "一言显示");
+  bindBarCollapse("serviceSection", "serviceToggle", "serviceToggleText", "serviceCollapsed", "本地服务");
 
   $("addRoot").addEventListener("click", async () => {
-    try {
-      const picked = await window.showDirectoryPicker({ mode: "read", id: "we-roots" });
-      if (!(await ensurePermission(picked))) return notice("未获得目录读取权限");
-
-      const detected = await detectRoots(picked);
-      const additions = detected.length ? detected : [{ handle: picked, label: picked.name }];
-
-      let added = 0;
-      for (const candidate of additions) {
-        let exists = false;
-        for (const item of state.roots) {
-          try {
-            if (await rootEntry(item).handle.isSameEntry(candidate.handle)) {
-              exists = true;
-              break;
-            }
-          } catch {
-
-          }
-        }
-        if (!exists) {
-          state.roots.push(candidate);
-          added++;
-        }
-      }
-
-      await kvSet("roots", state.roots);
-      renderRoots();
-      startWatcher();
-      await rescan();
-      if (detected.length) notice(`已识别并添加 ${added} 个壁纸目录`);
-    } catch (error) {
-      if (error?.name !== "AbortError") reportError(error);
-    }
+    const path = prompt("输入壁纸根目录绝对路径（Steam 库或 WE projects 上级目录）");
+    if (!path) return;
+    const res = await nativeRequest({ cmd: "add-root", path });
+    if (!res || !res.ok) return notice(res && res.error ? res.error : "添加失败");
+    notice(`已添加目录：${res.path}`);
+    await rescan(true);
   });
 }
 
