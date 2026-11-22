@@ -25,8 +25,8 @@ async function main() {
   purgeLegacyCache().catch(() => {});
   startClock();
   startIdle();
-  bindPanel();
   await loadSettings();
+  bindPanel();
   applyHitokotoStyle();
   whenIdle(() => loadStoredFont("hitokoto").then(() => renderHitokoto()));
   whenIdle(() => loadStoredFont("clock").then(() => applyClock()));
