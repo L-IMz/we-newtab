@@ -43,6 +43,7 @@ const DEFAULTS = {
   hitokotoCustomName: "",
   brightness: 100,
   volume: 0,
+  audioEnabled: true,
   audioSource: "auto",
   bridgePort: 8765,
   rotate: false,

@@ -375,7 +375,7 @@ async function playMedia(wall, kind) {
   }
 
   if (kind === "video") {
-    const level = Math.max(0, Math.min(100, Number(state.settings.volume) || 0)) / 100;
+    const level = volumeLevel();
     vid.src = url;
     vid.playbackRate = Number(state.settings.rate) || 1;
     vid.volume = level;
@@ -417,7 +417,7 @@ async function playWeb(wall) {
     state.webSent = {};
     pushWebProps(state.propValues || {});
     webFrame.contentWindow?.postMessage({ __weFit: { mode: state.settings.fit } }, "*");
-    webFrame.contentWindow?.postMessage({ __weVolume: { value: Math.max(0, Math.min(100, Number(state.settings.volume) || 0)) / 100 } }, "*");
+    webFrame.contentWindow?.postMessage({ __weVolume: { value: volumeLevel() } }, "*");
   };
   webFrame.src = wall.hostId
     ? `http://127.0.0.1:${port}/asset/${encodeURIComponent(wall.hostId)}/${tail}`
@@ -538,7 +538,7 @@ async function scenePayload(wall) {
         fit: state.settings.fit,
         scripts: !!state.settings.scripts,
         parallax: state.settings.parallax !== false,
-        volume: (Number(state.settings.volume) || 0) / 100,
+        volume: volumeLevel(),
         webPort: state.webPort || 0,
         quality: state.fallbackQuality
           ? { antiAliasing: false, particles: false, postProcessing: false }
@@ -635,16 +635,18 @@ function applyBrightness() {
   $("stage").style.filter = "";
 }
 
+function volumeLevel() {
+  if (!state.settings.audioEnabled) return 0;
+  return Math.max(0, Math.min(100, Number(state.settings.volume) || 0)) / 100;
+}
+
 function applyVolume() {
-  const value = Math.max(0, Math.min(100, Number(state.settings.volume) || 0));
-  const level = value / 100;
+  const level = volumeLevel();
   sceneFrame.contentWindow?.postMessage({ t: "volume", value: level }, "*");
-
   webFrame.contentWindow?.postMessage({ __weVolume: { value: level } }, "*");
-
   if (vid.src) {
     vid.volume = level;
-    vid.muted = value <= 0;
+    vid.muted = level <= 0;
   }
 }
 

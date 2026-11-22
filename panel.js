@@ -56,6 +56,8 @@ function renderRoots() {
   }
 }
 
+let volumeSaveTimer = 0;
+
 const NUMERIC_SETTINGS = new Set([
   "fps", "dpr", "brightness", "volume", "rotateEvery", "bridgePort",
   "hitokotoSize", "clockSize", "clockWeight", "clockX", "clockY", "occludeThreshold",
@@ -140,7 +142,7 @@ function bindSettings() {
     fps: "fps", dpr: "dpr", aa: "aa", particles: "particles", post: "post",
     fit: "fit", rate: "rate", scripts: "scripts", audioSource: "audioSource", bridgePort: "bridgePort",
     parallax: "parallax", monet: "monet",
-    brightness: "brightness", volume: "volume", rotate: "rotate",
+    brightness: "brightness", volume: "volume", audioEnabled: "audioEnabled", rotate: "rotate",
     rotateEvery: "rotateEvery", rotateRandom: "rotateRandom",
     occludePause: "occludePause", occludeThreshold: "occludeThreshold",
     hitokotoShow: "hitokotoShow", hitokotoSize: "hitokotoSize", hitokotoFont: "hitokotoFont",
@@ -180,7 +182,13 @@ function bindSettings() {
       if (key.startsWith("hitokoto")) renderHitokoto();
       if (key.startsWith("clock")) applyClock();
       if (key === "brightness") applyBrightness();
-      if (key === "volume") applyVolume();
+      if (key === "audioEnabled") applyVolume();
+      if (key === "volume") {
+        applyVolume();
+        clearTimeout(volumeSaveTimer);
+        volumeSaveTimer = setTimeout(() => saveSettings(), 150);
+        return;
+      }
       if (key === "rotate" || key === "rotateEvery" || key === "rotateRandom") scheduleRotation();
       if (key === "audioSource" || key === "bridgePort") applyAudioSource();
       if (key === "dpr") state.effectiveDpr = null;
